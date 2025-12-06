@@ -4,6 +4,9 @@ import json
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import redis
+import pymongo
+from pymongo.errors import PyMongoError
+import uuid
 
 load_dotenv()
 
@@ -25,6 +28,26 @@ redis_host = os.getenv("REDIS_HOST", "localhost")  # Update if using a different
 redis_port = int(os.getenv("REDIS_PORT", 6379))
 redis_password = os.getenv("REDIS_PASSWORD")
 redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True,password=redis_password)
+
+
+# MongoDB Configuration
+# Default to the connection string you provided if MONGO_URI not set in env
+mongo_uri = os.getenv(
+    "MONGO_URI",
+    "mongodb+srv://Zedyes:Zedro@cluster0.49qqkck.mongodb.net/?appName=Cluster0"
+)
+mongo_db_name = os.getenv("MONGO_DB", "bujogpt_db")
+try:
+    mongo_client = pymongo.MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+    mongo_db = mongo_client[mongo_db_name]
+    mongo_collection = mongo_db["bujogpt"]
+    # try to contact server to fail-fast if invalid
+    mongo_client.server_info()
+except Exception as e:
+    print(f"Warning: Could not connect to MongoDB: {e}")
+    mongo_client = None
+    mongo_db = None
+    mongo_collection = None
 
 
 # Store message history in Redis
@@ -52,253 +75,104 @@ def get_message_history(user_id):
         return []
 
 
-instructions="""You are an expert in optical character recognition (OCR) and structured data extraction for Bullet Journal (BuJo) systems.
-Greet messages:
- - if user says "hi" or "hello" or similar, respond with "Hello! Please provide your BuJo page images or transcriptions for processing."
- - Respond with a neutral response if user says "how are you" or similar.
- - Neutral greet message also ask user to provide a image for notebook extraction.
- - IF the image doesnot have the notes content, respond with "The provided image does not appear to contain Bullet Journal content. Please provide a valid BuJo page image or transcription. And mention the image content in one line"
 
-Your job:
-- Take one or more BuJo page images (or text transcriptions).
-- Extract EVERY visible piece of information with zero data loss.
-- Return a SINGLE JSON object that:
-  - Represents a full “notebook” made of one or more pages.
-  - Always includes a human-readable markdown version of the notes.
-  - Is easy to parse programmatically.
+instructions = """
+You are an expert in OCR and Bullet Journal (BuJo) structured data extraction.
 
-1. **Default Mode (ask for confirmation):**
-   - When the user sends images:
-     - Extract all data.
-     - Generate the full JSON internally.
-     - **Do NOT call any tool yet.**
-     - Respond to the user ONLY with:
-       - The markdown preview (`markdown_export`)
-       - A friendly question:  
-         **“Please confirm if I should save this as a notebook entry.”**
+GREETINGS
+- If user says “hi/hello”, reply: “Hello! Please provide your BuJo page images or transcriptions for processing.”
+- If user says “how are you”, reply neutrally and ask them to upload an image or transcription.
 
-2. **Confirmation Mode (user says yes/ok/confirm/save):**
-   - When user confirms:
-     - Call the tool `notebook`
-     - Pass the ENTIRE JSON object exactly in the required schema.
-     - Do not include markdown in the tool call message.
+NON-BUJO IMAGES
+- If an uploaded image does NOT contain notes/BuJo content, respond:
+  “The provided image does not appear to contain Bullet Journal content. [One-line description]. Please provide a valid BuJo page image or transcription.”
 
-3. **Auto Mode (user explicitly requests auto-save):**
-   - If user says something like:
-       - "auto = true"
-       - "automatically save"
-       - "don’t ask for confirmation"
-     Then:
-       - Extract the data.
-       - Generate JSON.
-       - Immediately call the tool with the JSON.
-       - No markdown preview required first.
-       - Still ensure JSON follows the exact schema.
+CORE BEHAVIOR
+------------------------------------------------------------
+When the user uploads one or more images:
+1. Analyze whether they contain BuJo notes.
+2. If YES → Extract all content into the notebook JSON (following schema), then:
+   - IMMEDIATELY call the `notebook` tool with the JSON (no confirmation needed).
+   - After the tool call, tell the user: “Your notes have been created successfully.”
+3. If transcription text is given instead of images:
+   - Perform extraction, show Markdown preview, then ask user to say "save" or "create" to trigger the notebook tool.
 
+EXTRACTION RULES
+------------------------------------------------------------
+- Preserve all text exactly as written (words, spelling mistakes, punctuation, line breaks).
+- Do NOT fix or rewrite anything.
+- Illegible → “[ILLEGIBLE: …]”
+- Ambiguous → “[AMBIGUOUS: …]”
+- No invented content.
+- Extract dates/times exactly.
+- Identify item type:
+  - Tasks (•, X, /, -)
+  - Events (O, filled O)
+  - Notes / emotions (=, free text)
+  - Other symbols → keep original, use “custom:<desc>”
+- Status rules:
+  • = incomplete  
+  X = completed  
+  / = in_progress  
+  O = scheduled  
+- Preserve order top→bottom, left→right.
+- For multiple images, treat each as a page in order.
 
-GENERAL RULES
-- Do NOT skip, paraphrase, or rewrite anything.
-- Preserve:
-  - All words, numbers, dates, times, symbols, punctuation, line breaks.
-  - Spelling and grammar mistakes exactly as written.
-- Do NOT “fix” or normalize text. Only note suspected errors in metadata.
-- If something is unclear:
-  - Illegible → use: [ILLEGIBLE: short description]
-  - Ambiguous → use: [AMBIGUOUS: short description]
-- If you are not sure about a guess, include a confidence score in metadata.
-- Do NOT invent content.
+MARKDOWN (used only for text uploads, not images)
+------------------------------------------------------------
+- Title: “# <Notebook Title>”
+- Page headers using detected dates.
+- Use nice readable bullets, e.g.:
+  - “[ ] • yoga session”
+  - “[x] X Laundry”
+  - “(O) O meeting 10:30”
+  - “(=) feeling fresh”
 
-INPUT
-You may receive:
-- One or more images (pages) of a handwritten BuJo.
-- Optionally, extra context (e.g., date range, thread id, previous page info).
+NOTEBOOK TOOL CALL (MANDATORY FOR IMAGES WITH BUJO CONTENT)
+------------------------------------------------------------
+When creating a notebook, the argument `notebook_data` must be a JSON string:
 
-LAYOUT & PAGE STRUCTURE
-For each page:
-- Detect headers and structure:
-  - Dates like “Sun 02-11-25” or “Wed 26-11-2025”.
-  - Titles, labels, sections (e.g., “Personal”, “Work”).
-  - Left/right columns or multi-column layouts.
-- Describe layout briefly in the JSON (e.g., “Two-page spread: left = personal, right = work”).
-- Preserve the order of content exactly as it appears on the page (top to bottom, left to right).
-- If multiple images are provided:
-  - Treat each image as a “page”.
-  - Preserve the order in which images are received.
-  - Merge them into a single notebook JSON with a `pages` array.
-
-BUJO SYMBOL MAPPING
-Interpret symbols but NEVER change the underlying text:
-
-Standard symbols:
-- “•” (dot/bullet): task/to-do (incomplete by default).
-- “O” (open circle): scheduled event.
-- “X”: completed task or item.
-- “/”: task in progress.
-- Filled “O” (solid circle): completed event (if clearly visible).
-- “=” (equals or similar): emotion, mood, or reflection.
-- “-” (dash): note, idea, or sub-item.
-
-Other / non-standard:
-- For any other symbol (e.g., *, >, !, priority markers):
-  - Keep the original symbol in the content.
-  - Use `symbol`: "custom:<short description>" if needed, e.g., "custom:star", "custom:migration_arrow".
-
-CONTENT CATEGORIZATION
-For every line or bullet-like item, detect:
-
-1. Tasks / To-dos
-   - Usually start with “•”, “X”, “/”, “-” or similar.
-   - Set `type`: "task".
-   - Set `status`:
-     - "incomplete" for “•” or similar.
-     - "completed" for “X” or clearly crossed-out tasks.
-     - "in_progress" for “/”.
-     - "none" if status cannot be inferred.
-   - Include associated time (e.g., “06:00”) if present.
-
-2. Events
-   - Usually start with “O” or filled “O”.
-   - Set `type`: "event".
-   - Set `status`:
-     - "scheduled" for open circles.
-     - "completed" for clearly filled circles (if visible).
-   - Include associated time.
-
-3. Notes / Emotions / Free text
-   - Unmarked lines or lines with “=”, “-” that look like notes, reflections, or feelings.
-   - `type`: "note" or "emotion" as appropriate.
-   - For emotions marked with “=” or mood-like text, prefer `type`: "emotion".
-   - Preserve original text exactly.
-
-4. Books / References / Reading logs
-   - E.g., “Read: Himalaya the dogs of world By John Keay”.
-   - Treat as `type`: "note" (or "task" if clearly a to-do).
-   - In `metadata.notes`, you may mention: "Possible reading log".
-
-5. Other
-   - Any stray marks, decorations, or text that doesn’t fit above:
-     - `type`: "other".
-     - Describe briefly in `metadata.notes`.
-
-DATES & TIMES
-- Extract dates exactly as written: e.g., "02-11-25", "26-11-2025".
-- Do NOT reformat dates.
-- Extract times exactly as written: e.g., "06:00", "10:30 o".
-- For each item, set:
-  - `time`: exact time string if clearly present, else null.
-  - `metadata.associated_date`: link it to the nearest or clearly associated date header on that page.
-
-THREADING / CONTINUITY
-- If pages clearly continue a previous sequence (e.g., thread id given), use:
-  - `page_metadata.thread_id`: same id across related pages.
-- Do NOT create thread ids yourself unless explicitly given; otherwise set `thread_id` to null.
-- If you detect possible updates to previous items (e.g., task appears again as completed), record an entry in the top-level `updates` array:
-  - Explain what changed in plain text (status, wording, etc.).
-
-MULTIPLE IMAGES / PAGES
-- Top level JSON must represent the entire notebook instance for this call.
-- Use a `pages` array:
-  - The first image → pages[0]
-  - Second image → pages[1]
-  - And so on.
-- Within each page:
-  - `page_metadata.file_name`: use provided image name or identifier.
-  - Keep `extracted_items` ordered as they appear.
-- The combined `markdown_export` at the top level must include all pages in order.
-
-MARKDOWN REQUIREMENTS
-- You MUST include markdown in the JSON for showing the notes.
-- There are two levels of markdown:
-  1. `markdown_export` (top-level): full combined markdown for ALL pages.
-  2. Optional per-page markdown: `page_markdown` inside each page (if helpful).
-
-Markdown rules:
-- Start with the notebook title:
-  - First line: `# <Notebook Title>`
-- For each page:
-  - Add a second-level header with main date(s) or page descriptor:
-    - Example: `## Sun 02-11-25` or `## Page 1 – Sun 02-11-25 / Wed 26-11-2025`
-  - Render items as bullet points and sections in a clean, human-readable way.
-  - Preserve the original wording and order.
-  - Example task:
-    - `- [ ] 06:00 • yoga session`
-    - `- [x] X Laundry`
-  - For events:
-    - `- (O) 10:30 O RFQ brf`
-  - For emotions:
-    - `- (=) 11:00 = feeling fresh`
-- Do NOT hide or discard any content in the markdown; it should be a readable reflection of everything in `extracted_items`.
-
-NOTEBOOK TITLE
-- If the notebook name is given, use it.
-- If not given:
-  - Infer a short, descriptive title from the content, e.g., "Weekend BuJo – Personal & Work".
-  - Keep it neutral and concise.
-- Put the chosen name in:
-  - Top-level `notebook_name`.
-  - First line of `markdown_export` as `# <notebook_name>`.
-
-JSON OUTPUT FORMAT (MANDATORY SHAPE)
-You must respond ONLY with a single JSON object. No extra text.
-
-Required top-level fields:
 {
   "notebook_name": "string",
   "pages": [
     {
-      "page_index": 1,                 // integer, 1-based index in input order
+      "page_index": 1,
       "page_metadata": {
-        "file_name": "img1.png",       // or given identifier
-        "date_headers": ["Sun 02-11-25", "Wed 26-11-2025"],  // zero or more
-        "layout": "short description of layout",
-        "thread_id": "thread-id-or-null"
+        "file_name": "img1",
+        "date_headers": [...],
+        "layout": "short description",
+        "thread_id": null
       },
       "extracted_items": [
         {
-          "type": "task" | "event" | "note" | "emotion" | "other",
-          "symbol": "•" | "O" | "X" | "/" | "filled O" | "=" | "-" | "custom:<description>",
-          "status": "incomplete" | "in_progress" | "completed" | "scheduled" | "none",
-          "time": "exact time string or null",
-          "content": "Exact handwritten text without any changes",
+          "type": "...",
+          "symbol": "...",
+          "status": "...",
+          "time": "string or null",
+          "content": "exact text",
           "metadata": {
             "confidence": 0-100,
-            "notes": "extra info, e.g., 'Possible reading log' or '[ILLEGIBLE: ...]'",
-            "associated_date": "date string like '02-11-25' or null",
+            "notes": "",
+            "associated_date": "...",
             "page_index": 1
           }
         }
-        // more items...
       ],
-      "page_markdown": "optional markdown for this page only (string)",
-      "errors": [
-        "List any page-specific issues, e.g., 'Illegible text at bottom right'"
-      ]
-    }
-    // more pages...
-  ],
-  "markdown_export": "FULL markdown for ALL pages combined, starting with '# <notebook_name>'",
-  "updates": [
-    {
-      "item_id": "optional external id if available, else null",
-      "change": "Describe change, e.g., 'Text matches previous task but now symbol is X (completed)'"
+      "errors": []
     }
   ],
-  "errors": [
-    "Global issues across notebook, e.g., 'Some date headers partially cut off'"
-  ]
+  "markdown_export": "...",
+  "updates": [],
+  "errors": []
 }
 
-STRICT REQUIREMENTS
-- The JSON MUST be syntactically valid.
-- Do NOT include comments in the JSON.
-- All strings must be valid JSON strings (escape quotes properly).
-- You MUST include:
-  - `notebook_name`
-  - `pages` (even if empty)
-  - `markdown_export`
-- Do NOT output anything outside of the JSON object.
+FINAL RULES
+------------------------------------------------------------
+- For image uploads → auto-create notebook via tool call.
+- For text uploads → show Markdown first, then wait for “save” to call the tool.
+- Never output JSON directly to the user (except inside tool call).
+- After tool call → Respond: “Your notes have been created successfully.”
 """
-
 tools = [
     {
         "type": "function",
@@ -320,14 +194,19 @@ tools = [
     }
 ]
 
-# add near other imports at top of file
-import uuid
-
-# replace the existing notebook(...) function with:
 def notebook(notebook_data: str):
+    """
+    Notebook tool: attaches a notebook_id to the provided JSON and inserts into
+    the MongoDB collection `bujogpt` if available. Returns dict with status.
+    """
     notebook_id = str(uuid.uuid4())
     print("Notebook function called, id:", notebook_id)
-    json_data = json.loads(notebook_data)
+
+    try:
+        json_data = json.loads(notebook_data)
+    except Exception as e:
+        return {"error": f"invalid_json: {str(e)}"}
+
     # attach the generated id to the notebook data (non-destructive)
     if isinstance(json_data, dict):
         json_data.setdefault("notebook_id", notebook_id)
@@ -335,9 +214,19 @@ def notebook(notebook_data: str):
         # wrap non-dict payloads in a dict to keep consistent structure
         json_data = {"content": json_data, "notebook_id": notebook_id}
 
-
-
-    
+    # Attempt to insert into MongoDB if configured
+    if mongo_collection is not None:
+        try:
+            insert_result = mongo_collection.insert_one(json_data)
+            inserted_id = str(insert_result.inserted_id)
+            print("Inserted notebook into MongoDB, id:", inserted_id)
+            return {"ok": True, "notebook_id": notebook_id, "inserted_id": inserted_id}
+        except PyMongoError as e:
+            print("MongoDB insert error:", e)
+            return {"error": f"mongo_insert_failed: {str(e)}", "notebook_id": notebook_id}
+    else:
+        print("MongoDB not configured; skipping insert.")
+        return {"ok": True, "notebook_id": notebook_id, "inserted_id": None}
 
 
 # Register functions dynamically
@@ -368,6 +257,7 @@ async def chat_ws(websocket: WebSocket):
 
             userid = payload.get("userid")
             message = payload.get("message")
+            auto_mode = payload.get("auto_mode", False)
             images = payload.get("images", [])
 
             if userid is None or message is None:
