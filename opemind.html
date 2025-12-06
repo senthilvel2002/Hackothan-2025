@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Bujo GPT - Business Portfolio Landing Page</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings:
+                'FILL' 0,
+                'wght' 400,
+                'GRAD' 0,
+                'opsz' 24
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#195de6",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#111621",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-[#0e121b] dark:text-gray-200">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<div class="flex flex-1 justify-center py-5">
+<div class="layout-content-container flex flex-col w-full max-w-6xl px-4 md:px-10">
+<!-- TopNavBar -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-gray-200 dark:border-gray-800 px-4 md:px-10 py-3">
+<div class="flex items-center gap-4 text-primary">
+<div class="size-6">
+<svg fill="currentColor" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M24 45.8096C19.6865 45.8096 15.4698 44.5305 11.8832 42.134C8.29667 39.7376 5.50128 36.3314 3.85056 32.3462C2.19985 28.361 1.76794 23.9758 2.60947 19.7452C3.451 15.5145 5.52816 11.6284 8.57829 8.5783C11.6284 5.52817 15.5145 3.45101 19.7452 2.60948C23.9758 1.76795 28.361 2.19986 32.3462 3.85057C36.3314 5.50129 39.7376 8.29668 42.134 11.8833C44.5305 15.4698 45.8096 19.6865 45.8096 24L24 24L24 45.8096Z"></path>
+</svg>
+</div>
+<h2 class="text-xl font-bold leading-tight tracking-[-0.015em] text-[#0e121b] dark:text-white">Bujo GPT</h2>
+</div>
+<div class="hidden md:flex flex-1 justify-end gap-8">
+<div class="flex items-center gap-9">
+<a class="text-sm font-medium leading-normal text-[#0e121b] dark:text-gray-300 hover:text-primary dark:hover:text-primary" href="#">Features</a>
+<a class="text-sm font-medium leading-normal text-[#0e121b] dark:text-gray-300 hover:text-primary dark:hover:text-primary" href="#">Benefits</a>
+<a class="text-sm font-medium leading-normal text-[#0e121b] dark:text-gray-300 hover:text-primary dark:hover:text-primary" href="#">Pricing</a>
+<a class="text-sm font-medium leading-normal text-[#0e121b] dark:text-gray-300 hover:text-primary dark:hover:text-primary" href="#">Contact</a>
+</div>
+<a href="http://localhost:3000" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold leading-normal tracking-[0.015em] hover:bg-primary/90 transition-colors">
+<span class="truncate">Try for Free</span>
+</a>
+</div>
+</header>
+<main class="flex-grow">
+<!-- HeroSection -->
+<section class="py-16 sm:py-24">
+<div class="flex flex-col-reverse gap-12 @container md:flex-row items-center">
+<div class="flex flex-col gap-6 text-center md:text-left md:w-1/2">
+<div class="flex flex-col gap-2">
+<h1 class="text-4xl font-black leading-tight tracking-[-0.033em] @[480px]:text-5xl @[480px]:font-black @[480px]:leading-tight @[480px]:tracking-[-0.033em] text-[#0e121b] dark:text-white">
+                                            The Future of Intelligent Note-Taking
+                                        </h1>
+<p class="text-base font-normal leading-normal @[480px]:text-lg @[480px]:font-normal @[480px]:leading-normal text-[#4e6797] dark:text-gray-400">
+                                            Instantly transform images, PDFs, and your daily routines into smart, actionable insights.
+                                        </p>
+</div>
+<div class="flex flex-wrap gap-3 justify-center md:justify-start">
+<a href="http://localhost:3000" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 @[480px]:h-12 @[480px]:px-5 bg-primary text-white text-sm font-bold leading-normal tracking-[0.015em] @[480px]:text-base @[480px]:font-bold @[480px]:leading-normal @[480px]:tracking-[0.015em] hover:bg-primary/90 transition-colors">
+<span class="truncate">Get Started Today</span>
+</a>
+<button class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 @[480px]:h-12 @[480px]:px-5 bg-gray-200 dark:bg-gray-800 text-[#0e121b] dark:text-white text-sm font-bold leading-normal tracking-[0.015em] @[480px]:text-base @[480px]:font-bold @[480px]:leading-normal @[480px]:tracking-[0.015em] hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors">
+<span class="truncate">Watch Demo</span>
+</button>
+</div>
+</div>
+<div class="w-full md:w-1/2">
+<div class="w-full bg-center bg-no-repeat aspect-video bg-cover rounded-xl shadow-lg" data-alt="A mockup of the SmartNotes AI application interface on a desktop screen, showing a dashboard with charts and notes." style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuA4l5EFLZCjweGtY3zPYplDb58mPpX99YKseYUnTeT5KNn-7xVeIkDm_oLlChaECTt_pcaTjSDXuGX12odrzLNGtkHU6vPLMqFcr2_xda0p_1_S63dfuYsVEHoxZhJH49TEhFEGc6QE_nyXYW1Fq3c3umjPv9OIkc3afb_yU1sQ9nxW5HqySFfwOVdfX4wMhKDouuKvwEvp4wPf6rBYhtuOIYaYzQ9EA4dXRb8ur8bA29fIgpU4T9SRkZCzpWKcpQomglr9tvzqwWo");'></div>
+</div>
+</div>
+</section>
+<!-- FeatureSection -->
+<section class="py-16 sm:py-24">
+<div class="flex flex-col gap-10 px-4">
+<div class="flex flex-col gap-4 text-center">
+<h2 class="text-[#0e121b] dark:text-white tracking-light text-[32px] font-bold leading-tight @[480px]:text-4xl @[480px]:font-black @[480px]:leading-tight @[480px]:tracking-[-0.033em] max-w-3xl mx-auto">
+                                        Powerful Features, Effortless Productivity
+                                    </h2>
+<p class="text-[#4e6797] dark:text-gray-400 text-base font-normal leading-normal max-w-3xl mx-auto">
+                                        Discover how our cutting-edge tools can revolutionize the way you work, capture ideas, and understand your workflow.
+                                    </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<div class="flex flex-col gap-3 p-6 rounded-xl bg-white dark:bg-background-dark/50 border border-gray-200 dark:border-gray-800">
+<div class="w-full bg-center bg-no-repeat aspect-video bg-cover rounded-lg" data-alt="An abstract illustration representing artificial intelligence processing text documents." style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDGtA4Z4qXy9uBlKclwKJO7jBN7XTQXeJiAj4jZRWHNP38_NCKQdQIduc-2iKrcknrRKvWzUZGYFZ2xXQe53leEJqpPrKPyowV6wP6-GUQ1k4yGZWYZYAJwuOGyQnob9NHsT9BYLbeoGDDGyoYZoKmD1V1kr7tK9H7K6E-0OAZMcpEk2XFmA6J5scQSA5r5uy43QftgcTJZpKl_fPJHb2mgWOr4AZPykpA0QKq4G2sVeHanXnixyTRE3srp5X49vXRjUWSpvelAkXE");'></div>
+<div>
+<p class="text-[#0e121b] dark:text-white text-lg font-medium leading-normal">AI Note Generation</p>
+<p class="text-[#4e6797] dark:text-gray-400 text-sm font-normal leading-normal">
+                                                Let our AI assistant create structured notes from your unstructured data, saving you hours of manual work.
+                                            </p>
+</div>
+</div>
+<div class="flex flex-col gap-3 p-6 rounded-xl bg-white dark:bg-background-dark/50 border border-gray-200 dark:border-gray-800">
+<div class="w-full bg-center bg-no-repeat aspect-video bg-cover rounded-lg" data-alt="A close-up of a scanner converting a physical document into a digital PDF file." style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDaeDQYRwAtGfDaGQK5uK-Cl6_EZ3Nzbzx9HojlLdYiC_D0xyRg8d1t1XPEoh4Kut8IdRKESBO-DKcL2TrRJuuHRkfdPDVQAuJOBC2KqGtOQ9WJYgXi7F98Z1pIQoCQAPZICOCoDPndQ0A80yZUD7Wj9YkW0hUR_vrfcV6mxstGRh7FNkZG38f55dkKzj7mM-LQG0EvT2AhEmDXGdG9d9TnqcnpK830YhpYu6KUmI-CeyL3uxg8Eoygc2d3Hbj52hM0WXArCdWG--M");'></div>
+<div>
+<p class="text-[#0e121b] dark:text-white text-lg font-medium leading-normal">Image &amp; PDF Processing</p>
+<p class="text-[#4e6797] dark:text-gray-400 text-sm font-normal leading-normal">
+                                                Simply upload any image or PDF and watch as it's transformed into editable, searchable, and organized text.
+                                            </p>
+</div>
+</div>
+<div class="flex flex-col gap-3 p-6 rounded-xl bg-white dark:bg-background-dark/50 border border-gray-200 dark:border-gray-800">
+<div class="w-full bg-center bg-no-repeat aspect-video bg-cover rounded-lg" data-alt="A colorful dashboard with various charts and graphs showing user analytics." style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDTANiA52FO4RU3ZyNg7d65UXeoiDywaXv7cVLZfGGt6lUTVeTTCv7aFTJq0H__Nqh9pC1567WKmtzhb881b4almQ-fX_9skxNwATKut5u2htCfESRthR3SX5OUkHji5Ap6kwfeERgY1bZGqSzSse2M0AujH4Pqvh7y8m9qvAImpDNm5AQPfBZqNnWQfVm6qmpo0XfspnxT4eB8V56Bi_R30H1plIpiMw2DTA6tsskFDVglXctQ5FywVeNeftTdASagDDkr5266rw0");'></div>
+<div>
+<p class="text-[#0e121b] dark:text-white text-lg font-medium leading-normal">Routine Analytics</p>
+<p class="text-[#4e6797] dark:text-gray-400 text-sm font-normal leading-normal">
+                                                Gain a deeper understanding of your productivity habits with beautiful, easy-to-read data visualizations.
+                                            </p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Carousel/Testimonials -->
+<section class="py-16 sm:py-24 bg-white dark:bg-background-dark/50 rounded-xl">
+<div class="flex flex-col gap-10 px-4">
+<div class="flex flex-col gap-4 text-center">
+<h2 class="text-[#0e121b] dark:text-white tracking-light text-[32px] font-bold leading-tight @[480px]:text-4xl @[480px]:font-black @[480px]:leading-tight @[480px]:tracking-[-0.033em] max-w-3xl mx-auto">
+                                        Trusted by Professionals Worldwide
+                                    </h2>
+</div>
+<div class="flex overflow-x-auto [-ms-scrollbar-style:none] [scrollbar-width:none] [&amp;::-webkit-scrollbar]:hidden">
+<div class="flex items-stretch p-4 gap-6 flex-nowrap w-full">
+<div class="flex h-full flex-1 flex-col gap-4 rounded-lg min-w-80 border border-gray-200 dark:border-gray-800 p-6">
+<div class="flex items-center gap-4">
+<div class="w-16 h-16 bg-center bg-no-repeat aspect-square bg-cover rounded-full" data-alt="Portrait of John Doe" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDfnY-np8e20X5fb-4UsVXqvTv-wKWjHYUwo3skfTgWB5hBEdZVnCu4q158c5UyRfxwNuXG7q8MjLpliIO0vS2r8YA4_88tQR9S1sL78uuGjtyC7WM0ECy-Eh9bXkiouBckBx7x0Df6GKRiTKzFTnwMtzvcE8nzpxZpQxsrJG7WF7VLbaWclEpDtlRo24ljZSXru8Rw4bEy9nlL7ft9Ta-PGCHsJZBxSZ_1SGPJg9DvRNhPdVZlpTs6xlvWXy3wCp9TU2Ef3bvTTRk");'></div>
+<div>
+<p class="text-[#0e121b] dark:text-white text-base font-medium leading-normal">John Doe</p>
+<p class="text-[#4e6797] dark:text-gray-400 text-sm font-normal leading-normal">Freelance Developer</p>
+</div>
+</div>
+<p class="text-[#4e6797] dark:text-gray-400 text-base font-normal leading-normal italic">"This app has completely changed my workflow. The AI note generation from PDFs is a lifesaver!"</p>
+</div>
+<div class="flex h-full flex-1 flex-col gap-4 rounded-lg min-w-80 border border-gray-200 dark:border-gray-800 p-6">
+<div class="flex items-center gap-4">
+<div class="w-16 h-16 bg-center bg-no-repeat aspect-square bg-cover rounded-full" data-alt="Portrait of Jane Smith" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCoMFxqRs0E2OudN8HIzxRJpCjkU8L1xg2CVgljj4HFGQID7EZW5upIvJFuGQFUXmtqCn-RCunuuFPgor9Sa5gHwKVOavCnadPxXZtEPS1xYzNWUdAMxmTocBLD2NRda-R1MHyO2gaUiHsgz1b7_0Wk4qqNo5xdnO6ER8efGDS6HB6cJ620wXN-wB6S3VPXonFALrGo0qDKWLaSkzlzoYXuXrlgB5Ogme8dC2LUVL9hIDjkJ43tkO4B44INAgwmDQ8cnxoQ4LK0mV8");'></div>
+<div>
+<p class="text-[#0e121b] dark:text-white text-base font-medium leading-normal">Jane Smith</p>
+<p class="text-[#4e6797] dark:text-gray-400 text-sm font-normal leading-normal">Project Lead, InnovateCorp</p>
+</div>
+</div>
+<p class="text-[#4e6797] dark:text-gray-400 text-base font-normal leading-normal italic">"Our team's collaboration has improved significantly. The analytics help us identify and remove bottlenecks."</p>
+</div>
+<div class="flex h-full flex-1 flex-col gap-4 rounded-lg min-w-80 border border-gray-200 dark:border-gray-800 p-6">
+<div class="flex items-center gap-4">
+<div class="w-16 h-16 bg-center bg-no-repeat aspect-square bg-cover rounded-full" data-alt="Portrait of Alex Johnson" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBOLDupAa544bWGmfVlaYNGC8u5U_hN0SJmzUzRmfDgTQ3Qgrry8-abRD3T761-iHHXmIWHio9-l0LTmDJUi1t9U1LIgAsbhzZV2sd_Bgnr9KRH7e8fRA7KB1cUp0xakm8dnlmWjk2Qzcw_pS5D-xrcsTvxVThuUP2HIECvUloSakU0MTDprP62-pGDstY6keLrtA6k0wnXHQCjlsveghP5Yf4or-xb75NdkCMHJUHq5Vffep4JfRvlJ1SlDviHO4hERwIsuN5gRRo");'></div>
+<div>
+<p class="text-[#0e121b] dark:text-white text-base font-medium leading-normal">Alex Johnson</p>
+<p class="text-[#4e6797] dark:text-gray-400 text-sm font-normal leading-normal">CEO, TechSolutions Inc.</p>
+</div>
+</div>
+<p class="text-[#4e6797] dark:text-gray-400 text-base font-normal leading-normal italic">"Bujo GPT has become an indispensable tool for our entire organization, boosting productivity by over 30%."</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- CTASection -->
+<section class="py-16 sm:py-24">
+<div class="@container">
+<div class="flex flex-col justify-end gap-6 px-4 py-10 @[480px]:gap-8 @[480px]:px-10 @[480px]:py-20 text-center items-center">
+<div class="flex flex-col gap-2">
+<h2 class="text-[#0e121b] dark:text-white tracking-light text-[32px] font-bold leading-tight @[480px]:text-4xl @[480px]:font-black @[480px]:leading-tight @[480px]:tracking-[-0.033em] max-w-2xl">
+                                            Ready to Revolutionize Your Productivity?
+                                        </h2>
+<p class="text-[#4e6797] dark:text-gray-400 text-base font-normal leading-normal max-w-2xl">Join thousands of users who are working smarter, not harder. Sign up today and experience the future of note-taking.</p>
+</div>
+<div class="flex justify-center">
+<a href="http://localhost:3000" class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 @[480px]:h-12 @[480px]:px-5 bg-primary text-white text-sm font-bold leading-normal tracking-[0.015em] @[480px]:text-base @[480px]:font-bold @[480px]:leading-normal @[480px]:tracking-[0.015em] grow hover:bg-primary/90 transition-colors">
+<span class="truncate">Get Started Today</span>
+</a>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="border-t border-gray-200 dark:border-gray-800 mt-12 py-8">
+<div class="flex flex-col md:flex-row justify-between items-center gap-6 px-4 md:px-10">
+<div class="flex items-center gap-2">
+<div class="size-4 text-primary">
+<svg fill="currentColor" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M24 45.8096C19.6865 45.8096 15.4698 44.5305 11.8832 42.134C8.29667 39.7376 5.50128 36.3314 3.85056 32.3462C2.19985 28.361 1.76794 23.9758 2.60947 19.7452C3.451 15.5145 5.52816 11.6284 8.57829 8.5783C11.6284 5.52817 15.5145 3.45101 19.7452 2.60948C23.9758 1.76795 28.361 2.19986 32.3462 3.85057C36.3314 5.50129 39.7376 8.29668 42.134 11.8833C44.5305 15.4698 45.8096 19.6865 45.8096 24L24 24L24 45.8096Z"></path>
+</svg>
+</div>
+<span class="text-sm text-[#4e6797] dark:text-gray-400">© 2024 Bujo GPT. All rights reserved.</span>
+</div>
+<div class="flex items-center gap-6 text-sm">
+<a class="text-[#4e6797] dark:text-gray-400 hover:text-primary dark:hover:text-primary" href="#">Privacy Policy</a>
+<a class="text-[#4e6797] dark:text-gray-400 hover:text-primary dark:hover:text-primary" href="#">Terms of Service</a>
+</div>
+</div>
+</footer>
+</div>
+</div>
+</div>
+</div>
+</body></html>
