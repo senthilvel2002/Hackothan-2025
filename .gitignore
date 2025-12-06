@@ -1,0 +1,10 @@
+.env
+venv/
+index.html
+README.md
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.idea/
+node_modules/
