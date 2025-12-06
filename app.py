@@ -1,7 +1,9 @@
+from datetime import datetime
 import os
 import json
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import redis
 
 load_dotenv()
 
@@ -18,12 +20,51 @@ try:
 except Exception:
     client = None
 
+# Redis Configuration
+redis_host = os.getenv("REDIS_HOST", "localhost")  # Update if using a different host
+redis_port = int(os.getenv("REDIS_PORT", 6379))
+redis_password = os.getenv("REDIS_PASSWORD")
+redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True,password=redis_password)
+
+
+# Store message history in Redis
+def store_message_history(user_id, role, content):
+    try:
+        redis_key = f"chat_history:{user_id}"
+        message = json.dumps({"role": role, "content": content})
+        # Use a pipeline for atomic operations
+        pipe = redis_client.pipeline()
+        pipe.rpush(redis_key, message)  # Append to list
+        pipe.ltrim(redis_key, -20, -1)  # Keep only last 20 messages
+        pipe.expire(redis_key, 600)     # Set TTL to 10 minutes (600 seconds)
+        pipe.execute()
+    except Exception as e:
+        print(f"Error storing message history: {str(e)}")
+
+# Retrieve message history from Redis
+def get_message_history(user_id):
+    try:
+        redis_key = f"chat_history:{user_id}"
+        history = redis_client.lrange(redis_key, 0, -1)  # Get all messages
+        return [json.loads(msg) for msg in history]
+    except Exception as e:
+        print(f"Error retrieving message history: {str(e)}")
+        return []
+
+
 instructions="""You are an expert in optical character recognition (OCR) and structured data extraction for Bullet Journal (BuJo) systems. Your task is to analyze a provided image or text description of a handwritten BuJo page and extract all content with perfect fidelity, mapping it to a structured digital format based on standard BuJo symbols and conventions. Ensure zero loss of information: preserve every word, number, date, time, symbol, punctuation, spelling (even if erroneous), abbreviation, and contextual detail exactly as it appears. Do not paraphrase, summarize, correct errors, or infer missing details unless explicitly noted as uncertain. If something is illegible or ambiguous, flag it as [ILLEGIBLE: description] or [AMBIGUOUS: possible interpretations].
 Input Format
 You will receive:
 
 An image URL or a textual description/transcription of the handwritten page (e.g., from OCR or manual input).
 Optional context: Date range, page number, or previous entries for continuity (e.g., threading across pages).
+
+Strict rules:
+- Donot miss any details from the image.
+- Without any data loss transcribe everything as it is from the image.
+- Make the extracted content into a markdown format which is easy to read and understand.
+- That markdown format must be included in the output JSON under the field "markdown_format".
+
 
 Extraction Rules
 
@@ -64,6 +105,10 @@ Strict Rules:
  - When a image or file is sent by user and it is a notes like data, You must call the tool "notebook" with the extracted data in JSON format as per the Output Format below.
 Tool calling:
  - When you have fully processed the input and extracted all relevant data, call the "notebook" tool with the following JSON structure:
+ - Mandatory: 
+        - To create a markdown format of notes and emotions, you must include the "markdown_export" field in the output JSON.
+        - As it is a notes like data, you must include the "notebook_name" in top of the notes markdown.
+
 
 Output Format
 Respond ONLY in JSON format for easy parsing and integration. Structure as follows:
@@ -90,8 +135,7 @@ Respond ONLY in JSON format for easy parsing and integration. Structure as follo
 },
 // More items...
 ],
-"taskpaper_export": "Raw TaskPaper format string for tasks (e.g., '- Yoga session @due(2025-11-02)')\n...",  // For tasks only
-"markdown_export": "# Notes and Emotions\n\n- Feeling fresh\n...",  // For notes/emotions
+"markdown_format": "Raw TaskPaper format string for tasks (e.g., '- Yoga session @due(2025-11-02)')\n...",  // For tasks only
 "updates": [  // If previous data provided
 {
 "item_id": "previous-unique-id",
@@ -114,9 +158,10 @@ Now, analyze the provided input and output the JSON.
 tools = [
     {
         "type": "function",
-        "name": "notebook",
-        "description": "Extract and structure Bullet Journal data from handwritten page images or descriptions.",
-        "parameters": {
+        "function": {
+            "name": "notebook",
+            "description": '''Extract and structure Bullet Journal data from handwritten page images or descriptions.''',
+            "parameters": {
             "type": "object",
             "properties": {
                 "notebook_data": {
@@ -127,8 +172,8 @@ tools = [
             "required": ["notebook_data"],
             "additionalProperties": False,
         },
-        "strict": True,
-    },
+        }
+    }
 ]
 
 def notebook(notebook_data: str):
@@ -152,29 +197,9 @@ def execute_tool(tool_name, arguments):
 
 @app.websocket("/chat")
 async def chat_ws(websocket: WebSocket):
-    """
-    WebSocket endpoint that expects JSON messages of the form:
-    {
-      "userid": "<string or int>",
-      "message": "<string>",
-      "images": [
-        {"filename": "name.png", "base64": "<base64 string>"},
-        ...
-      ]
-    }
-
-    The handler performs lightweight validation and sends back a JSON ack:
-    {
-      "status": "received",
-      "userid": ...,
-      "message": ...,
-      "images_received": <n>
-    }
-    """
     await websocket.accept()
     try:
         while True:
-            # receive text frames (expecting JSON)
             text = await websocket.receive_text()
             try:
                 payload = json.loads(text)
@@ -186,107 +211,119 @@ async def chat_ws(websocket: WebSocket):
             message = payload.get("message")
             images = payload.get("images", [])
 
-            # Basic validation
             if userid is None or message is None:
-                await websocket.send_json({"status": "error", "error": "missing_userid_or_message"})
+                await websocket.send_json(
+                    {"status": "error", "error": "missing_userid_or_message"}
+                )
                 continue
-            
+
+            # --------- BUILD OPENAI MESSAGE CONTENT (TEXT + MULTIPLE IMAGES) ----------
+            # Always start with the text block
             content = [
-                        { "type": "input_text", "text": message },
-                    ]
-            # Validate images
-            if images is not None :
+                {"type": "text", "text": message}
+            ]
+
+            # If there are images, append one image_url block per image
+            if images:
                 for img in images:
-                    content[0]["text"] += f"\n[Image: {img.get('filename', 'unnamed')}]"
+                    filename = img.get("filename", "unnamed")
+                    b64_data = img.get("base64")
+
+                    # Skip if no base64 data present
+                    if not b64_data:
+                        continue
+
+                    # Guess MIME type from filename (optional; default to jpeg)
+                    lower_name = filename.lower()
+                    if lower_name.endswith(".png"):
+                        mime = "image/png"
+                    elif lower_name.endswith(".webp"):
+                        mime = "image/webp"
+                    else:
+                        mime = "image/jpeg"
+
+                    # Annotate text (optional)
+                    content[0]["text"] += f"\n[Image: {filename}]"
+
+                    # ✅ New chat.completions format for images
                     content.append(
                         {
-                            "type": "input_image",
-                            "image_url": f"data:image/jpeg;base64,{img['base64']}",
-                            "detail": "high"
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime};base64,{b64_data}"
+                            }
+                            
                         }
                     )
+            # -------------------------------------------------------------------------
+            # Store conversation in Redis
+            store_message_history(userid, "user", message) 
 
-            
-            response = client.responses.create(
-                    model="gpt-4o",
-                    instructions=instructions,
-                    input=[
-                        {
-                            "role": "user",
-                            "content": content
-                        }
-                    ],
-                    tools=tools,
-                    stream=True,
+            messages = get_message_history(userid)
+            messages.append({
+                "role": "developer",
+                "content": (
+                    instructions
+                    + " Today current date is " + str(datetime.now())
+                    + " Current user id : " + str(userid)
                 )
-            for event in response:
-                # best-effort extraction of event type / payload
-                evt_type = getattr(event, "type", None) or (event.get("type") if isinstance(event, dict) else None)
-                # item metadata can indicate 'reasoning' kinds
-                item = getattr(event, "item", None) or (event.get("item") if isinstance(event, dict) else None)
-                # delta text (for text streaming)
-                delta = getattr(event, "delta", None) or (event.get("delta") if isinstance(event, dict) else None)
-                # some SDKs put text in .text or .output_text
-                if delta is None:
-                    delta = getattr(event, "text", None) or (event.get("text") if isinstance(event, dict) else None)
-                    if delta is None:
-                        delta = getattr(event, "output_text", None) or (event.get("output_text") if isinstance(event, dict) else None)
+            })
+            messages.append({"role": "user", "content": content})
 
-                # Map events -> statuses
-                # 1) If a reasoning item appears, indicate thinking
-                item_type = None
-                if item:
-                    try:
-                        item_type = getattr(item, "type", None) or (item.get("type") if isinstance(item, dict) else None)
-                    except Exception:
-                        item_type = None
+            iter_count = 0
+            MAX_ITER = 10
 
-                if evt_type in ("response.created",):
-                    last_status = "searching"
-                    await websocket.send_json({"type": "status", "status": last_status})
-                    continue
+            while True:
+                iter_count += 1
+                if iter_count > MAX_ITER:
+                    break
 
-                if evt_type in ("response.in_progress",):
-                    # still searching (may be retrieving tools, etc.)
-                    last_status = "searching"
-                    await websocket.send_json({"type": "status", "status": last_status})
-                    continue
+                response = client.chat.completions.create(
+                    model="gpt-5-nano-2025-08-07",
+                    messages=messages,
+                    temperature=1,
+                    tools=tools,
+                    tool_choice="auto",
+                    parallel_tool_calls=True,
+                )
 
-                if item_type == "reasoning":
-                    # Start of reasoning - indicate thinking
-                    if last_status != "thinking":
-                        last_status = "thinking"
-                        await websocket.send_json({"type": "status", "status": last_status})
-                    # continue, reasoning may not contain text deltas
-                    continue
-                
-                if event.type == "response.function_call_arguments.done":
-                    print(event)
-                    print(f"Tool Name: {event.name}")
-                    print(f"Tool Arguments: {event.arguments}")
-                    # Call the tool function here
-                    result = event.name(**json.loads(event.arguments))
-                    print(f"Tool Result: {result}")
-                    continue
+                model_response = response.choices[0].message
+                tool_calls = model_response.tool_calls
 
-                if event.type == "response.output_text.delta":
+                messages.append(model_response.model_dump())
+
+                if not tool_calls:
+                    store_message_history(userid, "assistant", response.choices[0].message.content)
                     await websocket.send_json({
-                        "type": "stream",
+                        "type": "message",
                         "userid": userid,
-                        "message_delta": event.delta,
-                    })
-                    continue
-
-                if evt_type in ("response.output_text.done",):
-                    print(event)
-                    # completed
-                    # Simple acknowledgement — you can expand this to call other services
-                    await websocket.send_json({
-                        "type": "done", 
+                        "message": model_response.content,
                     })
                     break
-            
+
+                for tool_call in tool_calls:
+                    tool_name = tool_call.function.name
+                    await websocket.send_json({
+                        "type": "tool_call",
+                        "userid": userid,
+                        "status": "Executing",
+                    })
+
+                    arguments = json.loads(tool_call.function.arguments)
+                    result = execute_tool(tool_name, arguments)
+                    print(result)
+
+                    await websocket.send_json({
+                        "type": "tool_result",
+                        "userid": userid,
+                        "status": "Notebook created successfully with your notes.",
+                    })
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(result),
+                    })
 
     except WebSocketDisconnect:
-        # Client disconnected — nothing else required for this minimal endpoint
         return
