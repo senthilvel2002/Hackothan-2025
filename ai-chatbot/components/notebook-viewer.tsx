@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Response } from "./elements/response";
+import { EnhancedMarkdown } from "./enhanced-markdown";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -697,7 +698,7 @@ export function NotebookViewer({ text }: { text: string }) {
 
       {viewMode === "markdown" ? (
         <div className="rounded-lg border bg-card p-4">
-          <Response>{notebookData.markdown_export || text}</Response>
+          <EnhancedMarkdown>{notebookData.markdown_export || text}</EnhancedMarkdown>
         </div>
       ) : (
         <NotebookStructuredView data={notebookData} />

@@ -40,6 +40,17 @@ interface Notebook {
   markdown_export: string;
 }
 
+// Return local YYYY-MM-DD for a Date or date string (avoids UTC shifts from toISOString)
+const formatDateYMD = (input?: string | Date | null): string | null => {
+  if (!input) return null;
+  const d = input instanceof Date ? new Date(input.getTime()) : new Date(input);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 export default function NotesPage() {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [filteredNotebooks, setFilteredNotebooks] = useState<Notebook[]>([]);
@@ -81,7 +92,7 @@ export default function NotesPage() {
     // Apply date filter if a date is selected
     if (selectedDate) {
       filtered = filtered.filter(notebook => {
-        const notebookDate = new Date(notebook.created_at).toISOString().split('T')[0];
+        const notebookDate = formatDateYMD(notebook.created_at);
         return notebookDate === selectedDate;
       });
     }
@@ -97,11 +108,8 @@ export default function NotesPage() {
     
     // Create array of all days in the past year
     for (let d = new Date(oneYearAgo); d <= today; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      const notebooksOnDate = notebooks.filter(nb => {
-        const notebookDate = new Date(nb.created_at).toISOString().split('T')[0];
-        return notebookDate === dateStr;
-      }).length;
+      const dateStr = formatDateYMD(d);
+      const notebooksOnDate = notebooks.filter(nb => formatDateYMD(nb.created_at) === dateStr).length;
       
       // GitHub-style intensity levels (0-4)
       let level = 0;
@@ -136,11 +144,8 @@ export default function NotesPage() {
     
     // Generate 6 weeks (42 days) to fill the calendar grid
     for (let i = 0; i < 42; i++) {
-      const dateStr = current.toISOString().split('T')[0];
-      const notebooksOnDate = notebooks.filter(nb => {
-        const notebookDate = new Date(nb.created_at).toISOString().split('T')[0];
-        return notebookDate === dateStr;
-      }).length;
+      const dateStr = formatDateYMD(current);
+      const notebooksOnDate = notebooks.filter(nb => formatDateYMD(nb.created_at) === dateStr).length;
       
       // GitHub-style intensity levels (0-4)
       let level = 0;
@@ -270,7 +275,14 @@ export default function NotesPage() {
       notebook.pages.forEach(page => {
         page.extracted_items?.forEach((item, index) => {
           const itemDate = item.metadata?.associated_date || notebook.created_at;
-          const parsedDate = new Date(itemDate).toISOString().split('T')[0];
+          // Ensure we have a valid date before parsing
+          if (!itemDate) return;
+          
+          const dateObj = new Date(itemDate);
+          // Check if the date is valid
+          if (isNaN(dateObj.getTime())) return;
+          
+          const parsedDate = dateObj.toISOString().split('T')[0];
           
           timelineItems.push({
             id: `${notebook._id}-${page.page_index}-${index}`,
@@ -320,10 +332,23 @@ export default function NotesPage() {
 
   // Helper function to get appropriate checkbox for item
   const getCheckboxForItem = (item: any): string => {
-    if (item.status === "X" || item.symbol === "X") return "[x]";
-    if (item.status === "/" || item.symbol === "/") return "[/]";
+    // For tasks - use checkboxes
+    if (item.type === "task") {
+      if (item.status === "completed" || item.status === "X" || item.symbol === "X") return "[x]";
+      if (item.status === "in_progress" || item.status === "/" || item.symbol === "/") return "[/]";
+      return "[ ]";
+    }
+    
+    // For events - use radio buttons
+    if (item.type === "event") {
+      if (item.status === "completed" || item.status === "X" || item.symbol === "filled O") return "(●)";
+      return "(○)";
+    }
+    
+    // For other types
     if (item.status === "=" || item.symbol === "=") return "[=]";
-    if (item.type === "event") return "(O)";
+    if (item.type === "note") return "-";
+    
     return "[ ]";
   };
 
@@ -459,7 +484,7 @@ export default function NotesPage() {
                 
                 {/* Calendar days */}
                 {monthCalendarData.map((day, idx) => {
-                  const dateStr = day.date.toISOString().split('T')[0];
+                  const dateStr = formatDateYMD(day.date) || "";
                   const isSelected = selectedDate === dateStr;
                   
                   return (
@@ -613,7 +638,7 @@ export default function NotesPage() {
                   ))}
                   
                   {monthCalendarData.map((day, idx) => {
-                    const dateStr = day.date.toISOString().split('T')[0];
+                    const dateStr = formatDateYMD(day.date) || "";
                     const isSelected = selectedDate === dateStr;
                     
                     return (
@@ -668,7 +693,7 @@ export default function NotesPage() {
                       )}
                       title={`${day.date.toDateString()}: ${day.count} notebooks`}
                       onClick={() => {
-                        const dateStr = day.date.toISOString().split('T')[0];
+                        const dateStr = formatDateYMD(day.date) || "";
                         setSelectedDate(selectedDate === dateStr ? null : dateStr);
                         // Close mobile calendar after selection
                         const overlay = document.getElementById('mobile-calendar-overlay');
