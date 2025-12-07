@@ -79,10 +79,10 @@ export default function NotesPage() {
 
     // Apply search filter
     if (searchQuery.trim()) {
-      filtered = filtered.filter(notebook => 
+      filtered = filtered.filter(notebook =>
         notebook.notebook_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        notebook.pages.some(page => 
-          page.extracted_items.some(item => 
+        notebook.pages.some(page =>
+          page.extracted_items.some(item =>
             item.content.toLowerCase().includes(searchQuery.toLowerCase())
           )
         )
@@ -105,12 +105,12 @@ export default function NotesPage() {
     const today = new Date();
     const oneYearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
     const days = [];
-    
+
     // Create array of all days in the past year
     for (let d = new Date(oneYearAgo); d <= today; d.setDate(d.getDate() + 1)) {
       const dateStr = formatDateYMD(d);
       const notebooksOnDate = notebooks.filter(nb => formatDateYMD(nb.created_at) === dateStr).length;
-      
+
       // GitHub-style intensity levels (0-4)
       let level = 0;
       if (notebooksOnDate > 0) {
@@ -119,14 +119,14 @@ export default function NotesPage() {
         else if (notebooksOnDate >= 2) level = 2;
         else level = 1;
       }
-      
+
       days.push({
         date: new Date(d),
         count: notebooksOnDate,
         level: level
       });
     }
-    
+
     return days;
   };
 
@@ -138,15 +138,15 @@ export default function NotesPage() {
     const lastDay = new Date(year, month + 1, 0);
     const startDate = new Date(firstDay);
     startDate.setDate(startDate.getDate() - firstDay.getDay()); // Start from Sunday
-    
+
     const days = [];
     const current = new Date(startDate);
-    
+
     // Generate 6 weeks (42 days) to fill the calendar grid
     for (let i = 0; i < 42; i++) {
       const dateStr = formatDateYMD(current);
       const notebooksOnDate = notebooks.filter(nb => formatDateYMD(nb.created_at) === dateStr).length;
-      
+
       // GitHub-style intensity levels (0-4)
       let level = 0;
       if (notebooksOnDate > 0) {
@@ -155,17 +155,17 @@ export default function NotesPage() {
         else if (notebooksOnDate >= 2) level = 2;
         else level = 1;
       }
-      
+
       days.push({
         date: new Date(current),
         count: notebooksOnDate,
         level: level,
         isCurrentMonth: current.getMonth() === month
       });
-      
+
       current.setDate(current.getDate() + 1);
     }
-    
+
     return days;
   };
 
@@ -190,10 +190,10 @@ export default function NotesPage() {
       ...notebook,
       markdown_export: generateMarkdownFromPages(notebook)
     };
-    
+
     // Store notebook data in sessionStorage for the full-page view
     sessionStorage.setItem('selectedNotebook', JSON.stringify(notebookData));
-    
+
     // Navigate to full-page notebook view
     window.location.href = `/notes/${notebook._id}`;
   };
@@ -209,14 +209,14 @@ export default function NotesPage() {
     if (typeCounts.task) stats.push(`${typeCounts.task} tasks`);
     if (typeCounts.event) stats.push(`${typeCounts.event} events`);
     if (typeCounts.note) stats.push(`${typeCounts.note} notes`);
-    
+
     return stats.join(", ") || "No items";
   };
 
   // Generate better markdown from pages data
   const generateMarkdownFromPages = (notebook: Notebook): string => {
     let markdown = `# ${notebook.notebook_name}\n\n`;
-    
+
     notebook.pages.forEach(page => {
       // Add page header with date if available
       const dateHeaders = page.page_metadata?.date_headers || [];
@@ -225,18 +225,18 @@ export default function NotesPage() {
       } else {
         markdown += `## Page ${page.page_index}\n\n`;
       }
-      
+
       // Group items by time for better organization
       const itemsWithTime = page.extracted_items.filter(item => item.time);
       const itemsWithoutTime = page.extracted_items.filter(item => !item.time);
-      
+
       // Sort timed items by time
       itemsWithTime.sort((a, b) => {
         const timeA = a.time || "00:00";
         const timeB = b.time || "00:00";
         return timeA.localeCompare(timeB);
       });
-      
+
       // Add timed items first
       itemsWithTime.forEach(item => {
         const checkbox = getCheckboxForItem(item);
@@ -244,17 +244,17 @@ export default function NotesPage() {
         const symbol = item.symbol !== item.status ? `${item.symbol} ` : "";
         markdown += `- ${checkbox} ${timeStr}${symbol}${item.content}\n`;
       });
-      
+
       // Add non-timed items
       itemsWithoutTime.forEach(item => {
         const checkbox = getCheckboxForItem(item);
         const symbol = item.symbol !== item.status ? `${item.symbol} ` : "";
         markdown += `- ${checkbox} ${symbol}${item.content}\n`;
       });
-      
+
       markdown += "\n";
     });
-    
+
     return markdown;
   };
 
@@ -277,13 +277,13 @@ export default function NotesPage() {
           const itemDate = item.metadata?.associated_date || notebook.created_at;
           // Ensure we have a valid date before parsing
           if (!itemDate) return;
-          
+
           const dateObj = new Date(itemDate);
           // Check if the date is valid
           if (isNaN(dateObj.getTime())) return;
-          
+
           const parsedDate = dateObj.toISOString().split('T')[0];
-          
+
           timelineItems.push({
             id: `${notebook._id}-${page.page_index}-${index}`,
             type: item.type as 'task' | 'event' | 'note',
@@ -302,7 +302,7 @@ export default function NotesPage() {
     return timelineItems.sort((a, b) => {
       const dateCompare = a.date.localeCompare(b.date);
       if (dateCompare !== 0) return dateCompare;
-      
+
       const timeA = a.time || '00:00';
       const timeB = b.time || '00:00';
       return timeA.localeCompare(timeB);
@@ -321,14 +321,14 @@ export default function NotesPage() {
   };
 
   const timelineData = generateTimelineData();
-  const filteredTimelineData = timelineFilter === 'all' 
-    ? timelineData 
+  const filteredTimelineData = timelineFilter === 'all'
+    ? timelineData
     : timelineData.filter(item => {
-        if (timelineFilter === 'tasks') return item.type === 'task';
-        if (timelineFilter === 'events') return item.type === 'event';
-        if (timelineFilter === 'notes') return item.type === 'note';
-        return false;
-      });
+      if (timelineFilter === 'tasks') return item.type === 'task';
+      if (timelineFilter === 'events') return item.type === 'event';
+      if (timelineFilter === 'notes') return item.type === 'note';
+      return false;
+    });
 
   // Helper function to get appropriate checkbox for item
   const getCheckboxForItem = (item: any): string => {
@@ -338,17 +338,17 @@ export default function NotesPage() {
       if (item.status === "in_progress" || item.status === "/" || item.symbol === "/") return "[/]";
       return "[ ]";
     }
-    
+
     // For events - use radio buttons
     if (item.type === "event") {
       if (item.status === "completed" || item.status === "X" || item.symbol === "filled O") return "(●)";
       return "(○)";
     }
-    
+
     // For other types
     if (item.status === "=" || item.symbol === "=") return "[=]";
     if (item.type === "note") return "-";
-    
+
     return "[ ]";
   };
 
@@ -356,36 +356,36 @@ export default function NotesPage() {
     <div className="relative h-screen bg-neutral-50 overflow-hidden flex flex-col">
       {/* Header with back button */}
       <header className="flex-shrink-0 z-40 bg-white/90 backdrop-blur border-b shadow-sm">
-          <div className="flex items-center gap-4 px-4 py-3">
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => window.location.href = '/'}
-              className="flex items-center gap-2"
-            >
-              <ArrowLeftIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Back to Chat</span>
-            </Button>
-            
-            <div className="flex items-center gap-2 flex-1">
-              <BookOpenIcon className="w-5 h-5 text-indigo-600" />
-              <h1 className="font-semibold text-lg text-gray-800">All Notes</h1>
-            </div>
-            
-            {/* Mobile calendar toggle button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="lg:hidden flex items-center gap-2"
-              onClick={() => {
-                const overlay = document.getElementById('mobile-calendar-overlay');
-                if (overlay) overlay.classList.remove('hidden');
-              }}
-            >
-              <CalendarDaysIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Calendar</span>
-            </Button>
+        <div className="flex items-center gap-4 px-4 py-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => window.location.href = '/'}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeftIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">Back to Chat</span>
+          </Button>
+
+          <div className="flex items-center gap-2 flex-1">
+            <BookOpenIcon className="w-5 h-5 text-indigo-600" />
+            <h1 className="font-semibold text-lg text-gray-800">All Notes</h1>
           </div>
+
+          {/* Mobile calendar toggle button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="lg:hidden flex items-center gap-2"
+            onClick={() => {
+              const overlay = document.getElementById('mobile-calendar-overlay');
+              if (overlay) overlay.classList.remove('hidden');
+            }}
+          >
+            <CalendarDaysIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">Calendar</span>
+          </Button>
+        </div>
       </header>
 
       {/* Main content with sidebar */}
@@ -414,7 +414,7 @@ export default function NotesPage() {
                 </Button>
               </div>
             </div>
-            
+
             {calendarView === 'year' ? (
               <div className="text-xs text-gray-500 mb-2">
                 {notebooks.length} notebooks in the last year
@@ -443,7 +443,7 @@ export default function NotesPage() {
               </div>
             )}
           </div>
-          
+
           {/* Calendar display */}
           <div className="overflow-x-auto">
             {calendarView === 'year' ? (
@@ -455,19 +455,19 @@ export default function NotesPage() {
                     <span key={month} className="text-center">{month}</span>
                   ))}
                 </div>
-                
+
                 {/* Calendar grid */}
                 {yearCalendarData.map((day, idx) => (
                   <div
                     key={idx}
-                      className={cn(
-                        "w-3 h-3 rounded-sm cursor-pointer hover:ring-1 hover:ring-gray-400 transition-all",
-                        day.level === 0 && "bg-gray-100",
-                        day.level === 1 && "bg-green-200",
-                        day.level === 2 && "bg-green-300",
-                        day.level === 3 && "bg-green-400",
-                        day.level === 4 && "bg-green-500"
-                      )}
+                    className={cn(
+                      "w-3 h-3 rounded-sm cursor-pointer hover:ring-1 hover:ring-gray-400 transition-all",
+                      day.level === 0 && "bg-gray-100",
+                      day.level === 1 && "bg-green-200",
+                      day.level === 2 && "bg-green-300",
+                      day.level === 3 && "bg-green-400",
+                      day.level === 4 && "bg-green-500"
+                    )}
                     title={`${day.date.toDateString()}: ${day.count} notebooks`}
                   />
                 ))}
@@ -481,12 +481,12 @@ export default function NotesPage() {
                     {day}
                   </div>
                 ))}
-                
+
                 {/* Calendar days */}
                 {monthCalendarData.map((day, idx) => {
                   const dateStr = formatDateYMD(day.date) || "";
                   const isSelected = selectedDate === dateStr;
-                  
+
                   return (
                     <div
                       key={idx}
@@ -522,7 +522,7 @@ export default function NotesPage() {
                 })}
               </div>
             )}
-            
+
             {/* GitHub-style Legend */}
             <div className="mt-4 pt-3 border-t border-gray-200">
               <div className="flex items-center justify-between text-xs">
@@ -537,29 +537,29 @@ export default function NotesPage() {
                 <span className="text-gray-500">More</span>
               </div>
             </div>
-            
-              {/* Timeline Toggle */}
-              <div className="mt-6 pt-4 border-t border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-sm text-gray-700">Timeline View</h4>
-                  <button
-                    onClick={() => setShowTimeline(!showTimeline)}
+
+            {/* Timeline Toggle */}
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-sm text-gray-700">Timeline View</h4>
+                <button
+                  onClick={() => setShowTimeline(!showTimeline)}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                    showTimeline ? "bg-indigo-600" : "bg-gray-200"
+                  )}
+                >
+                  <span
                     className={cn(
-                      "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                      showTimeline ? "bg-indigo-600" : "bg-gray-200"
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                      showTimeline ? "translate-x-6" : "translate-x-1"
                     )}
-                  >
-                    <span
-                      className={cn(
-                        "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                        showTimeline ? "translate-x-6" : "translate-x-1"
-                      )}
-                    />
-                  </button>
-                </div>
+                  />
+                </button>
+              </div>
             </div>
           </div>
-          
+
         </aside>
 
         {/* Mobile calendar sidebar overlay */}
@@ -567,7 +567,7 @@ export default function NotesPage() {
           <div className="w-80 h-full bg-white p-4 overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-lg text-gray-800">Calendar</h3>
-              <button 
+              <button
                 onClick={() => {
                   const overlay = document.getElementById('mobile-calendar-overlay');
                   if (overlay) overlay.classList.add('hidden');
@@ -579,7 +579,7 @@ export default function NotesPage() {
                 </svg>
               </button>
             </div>
-            
+
             {/* Calendar content for mobile */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-3">
@@ -599,7 +599,7 @@ export default function NotesPage() {
                   </button>
                 </div>
               </div>
-              
+
               {calendarView === 'year' ? (
                 <div className="text-xs text-gray-500 mb-2">
                   {notebooks.length} notebooks in the last year
@@ -627,7 +627,7 @@ export default function NotesPage() {
                   </button>
                 </div>
               )}
-              
+
               {/* Mobile calendar grid */}
               {calendarView === 'month' ? (
                 <div className="grid grid-cols-7 gap-1 text-xs">
@@ -636,11 +636,11 @@ export default function NotesPage() {
                       {day}
                     </div>
                   ))}
-                  
+
                   {monthCalendarData.map((day, idx) => {
                     const dateStr = formatDateYMD(day.date) || "";
                     const isSelected = selectedDate === dateStr;
-                    
+
                     return (
                       <div
                         key={idx}
@@ -703,7 +703,7 @@ export default function NotesPage() {
                   ))}
                 </div>
               )}
-              
+
               {/* GitHub-style Legend for Mobile */}
               <div className="mt-4 pt-3 border-t border-gray-200">
                 <div className="flex items-center justify-between text-xs">
@@ -718,7 +718,7 @@ export default function NotesPage() {
                   <span className="text-gray-500">More</span>
                 </div>
               </div>
-              
+
               {/* Mobile Timeline Toggle */}
               <div className="mt-6 pt-4 border-t border-gray-200">
                 <div className="flex items-center justify-between">
@@ -760,12 +760,12 @@ export default function NotesPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 rounded-full border border-gray-200 focus:border-gray-300 focus:ring-0 outline-none transition-all text-gray-700 bg-white shadow-sm hover:shadow-md focus:shadow-md text-sm"
-                  style={{ 
+                  style={{
                     boxShadow: searchQuery ? '0 4px 12px rgba(0,0,0,0.1)' : '0 2px 8px rgba(0,0,0,0.05)'
                   }}
                 />
               </div>
-              
+
               {/* Active filters display */}
               {(selectedDate || searchQuery) && (
                 <div className="flex gap-2 flex-wrap">
@@ -808,7 +808,7 @@ export default function NotesPage() {
                     {filteredTimelineData.length} items • Filtered by {timelineFilter}
                   </p>
                 </div>
-                
+
                 {/* Timeline Filters */}
                 <div className="hidden sm:flex gap-2">
                   {(['all', 'tasks', 'events', 'notes'] as const).map((filter) => (
@@ -864,15 +864,15 @@ export default function NotesPage() {
                           {/* Date Header */}
                           <div className="sticky top-0 bg-white/95 backdrop-blur-sm py-4 mb-6 border-b border-gray-200 z-10 shadow-sm -mx-4 px-4">
                             <h3 className="text-base font-semibold text-gray-800">
-                              {new Date(date).toLocaleDateString('en-US', { 
-                                weekday: 'long', 
-                                year: 'numeric', 
-                                month: 'long', 
-                                day: 'numeric' 
+                              {new Date(date).toLocaleDateString('en-US', {
+                                weekday: 'long',
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
                               })}
                             </h3>
                           </div>
-                          
+
                           {/* Timeline Items for this date */}
                           <div className="space-y-3 pl-4 border-l-2 border-gray-200">
                             {items.map((item) => (
@@ -885,7 +885,7 @@ export default function NotesPage() {
                                   className="absolute -left-6 w-4 h-4 rounded-full border-2 border-white"
                                   style={{ backgroundColor: item.color }}
                                 />
-                                
+
                                 {/* Content Card */}
                                 <div className="flex items-start gap-4 p-4 bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
                                   <div className="flex-1">
@@ -911,7 +911,7 @@ export default function NotesPage() {
                                           </span>
                                         </div>
                                       </div>
-                                      
+
                                       {/* Status indicator */}
                                       <div className="flex items-center gap-2">
                                         {item.status === 'X' && (
@@ -947,7 +947,7 @@ export default function NotesPage() {
                     {/* Timeline Summary */}
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">Timeline Summary</h3>
-                      
+
                       {/* Stats Cards */}
                       <div className="grid grid-cols-2 gap-3 mb-4">
                         <div className="bg-blue-50 p-3 rounded-lg">
@@ -1030,210 +1030,210 @@ export default function NotesPage() {
             ) : (
               <div className="p-4 pt-2">
                 {loading && (
-            <div className="[column-count:1] sm:[column-count:2] lg:[column-count:3] [column-gap:1rem]">
-              {/* Generate shimmer cards */}
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="mb-4 rounded-xl border shadow break-inside-avoid p-4 min-h-[120px] relative bg-gray-100 animate-pulse"
-                  style={{ boxShadow: "0 4px 16px 4px rgba(100,100,140,0.07)", maxWidth: 370 }}
-                >
-                  <div className="flex items-start gap-2 mb-3">
-                    <div className="w-5 h-5 bg-gray-200 rounded animate-pulse mt-0.5 flex-shrink-0"></div>
-                    <div className="w-3/4 h-5 bg-gray-200 rounded animate-pulse flex-1"></div>
-                  </div>
-                  
-                  <div className="w-2/3 h-4 bg-gray-200 rounded animate-pulse mb-3"></div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="w-16 h-3 bg-gray-200 rounded animate-pulse"></div>
-                    <div className="w-20 h-3 bg-gray-200 rounded animate-pulse"></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          
-          {!loading && filteredNotebooks.length === 0 && (
-            <div className="flex flex-col items-center justify-center my-16 px-4">
-              {/* Illustration */}
-              <div className="mb-8 relative">
-                <svg
-                  width="200"
-                  height="200"
-                  viewBox="0 0 400 400"
-                  className="drop-shadow-lg"
-                >
-                  {/* Background circle */}
-                  <circle cx="200" cy="200" r="180" fill="#1a1a1a" opacity="0.9" />
-                  
-                  {/* Person */}
-                  <g transform="translate(200, 200)">
-                    {/* Head */}
-                    <ellipse cx="0" cy="-40" rx="25" ry="30" fill="#f4a261" />
-                    
-                    {/* Hair */}
-                    <path d="M -25 -65 Q 0 -75 25 -65 Q 20 -45 0 -50 Q -20 -45 -25 -65" fill="#8b4513" />
-                    
-                    {/* Eyes (stressed) */}
-                    <circle cx="-8" cy="-45" r="2" fill="#333" />
-                    <circle cx="8" cy="-45" r="2" fill="#333" />
-                    <path d="M -12 -50 L -4 -48" stroke="#333" strokeWidth="1.5" fill="none" />
-                    <path d="M 4 -48 L 12 -50" stroke="#333" strokeWidth="1.5" fill="none" />
-                    
-                    {/* Mouth (frown) */}
-                    <path d="M -8 -30 Q 0 -25 8 -30" stroke="#333" strokeWidth="2" fill="none" />
-                    
-                    {/* Body */}
-                    <rect x="-30" y="-10" width="60" height="80" rx="15" fill="#e76f51" />
-                    
-                    {/* Arms (hands on head) */}
-                    <ellipse cx="-45" cy="10" rx="12" ry="35" fill="#e76f51" transform="rotate(-30)" />
-                    <ellipse cx="45" cy="10" rx="12" ry="35" fill="#e76f51" transform="rotate(30)" />
-                    
-                    {/* Hands */}
-                    <circle cx="-35" cy="-25" r="8" fill="#f4a261" />
-                    <circle cx="35" cy="-25" r="8" fill="#f4a261" />
-                    
-                    {/* Legs */}
-                    <rect x="-20" y="70" width="15" height="50" fill="#264653" />
-                    <rect x="5" y="70" width="15" height="50" fill="#264653" />
-                    
-                    {/* Feet */}
-                    <ellipse cx="-12" cy="125" rx="12" ry="6" fill="#2a9d8f" />
-                    <ellipse cx="12" cy="125" rx="12" ry="6" fill="#2a9d8f" />
-                  </g>
-                  
-                  {/* Stress elements around person */}
-                  {/* Lightning bolts */}
-                  <path d="M 120 80 L 110 100 L 120 95 L 105 120" stroke="#f4a261" strokeWidth="3" fill="none" />
-                  <path d="M 280 80 L 290 100 L 280 95 L 295 120" stroke="#f4a261" strokeWidth="3" fill="none" />
-                  
-                  {/* Papers flying */}
-                  <g transform="translate(320, 60) rotate(15)">
-                    <rect width="25" height="30" fill="white" rx="2" />
-                    <line x1="3" y1="5" x2="22" y2="5" stroke="#333" strokeWidth="1" />
-                    <line x1="3" y1="10" x2="18" y2="10" stroke="#333" strokeWidth="1" />
-                    <line x1="3" y1="15" x2="20" y2="15" stroke="#333" strokeWidth="1" />
-                  </g>
-                  
-                  <g transform="translate(60, 100) rotate(-20)">
-                    <rect width="25" height="30" fill="white" rx="2" />
-                    <line x1="3" y1="5" x2="22" y2="5" stroke="#333" strokeWidth="1" />
-                    <line x1="3" y1="10" x2="18" y2="10" stroke="#333" strokeWidth="1" />
-                  </g>
-                  
-                  {/* Clock */}
-                  <g transform="translate(320, 180)">
-                    <circle r="25" fill="#6c5ce7" />
-                    <circle r="20" fill="#a29bfe" />
-                    <line x1="0" y1="0" x2="0" y2="-12" stroke="white" strokeWidth="2" />
-                    <line x1="0" y1="0" x2="8" y2="-8" stroke="white" strokeWidth="1.5" />
-                    {/* Clock marks */}
-                    <circle cx="0" cy="-15" r="1" fill="white" />
-                    <circle cx="15" cy="0" r="1" fill="white" />
-                    <circle cx="0" cy="15" r="1" fill="white" />
-                    <circle cx="-15" cy="0" r="1" fill="white" />
-                  </g>
-                  
-                  {/* Laptop with low battery */}
-                  <g transform="translate(80, 280)">
-                    <rect width="50" height="30" fill="#6c5ce7" rx="3" />
-                    <rect x="5" y="5" width="40" height="20" fill="#2d3436" rx="2" />
-                    {/* Battery icon */}
-                    <rect x="15" y="10" width="12" height="6" fill="#e17055" rx="1" />
-                    <rect x="16" y="11" width="4" height="4" fill="#d63031" />
-                    <text x="30" y="15" fill="#e17055" fontSize="6">!</text>
-                  </g>
-                  
-                  {/* Email with notification */}
-                  <g transform="translate(300, 280)">
-                    <rect width="35" height="25" fill="#6c5ce7" rx="3" />
-                    <path d="M 5 8 L 17.5 15 L 30 8" stroke="white" strokeWidth="1.5" fill="none" />
-                    <circle cx="30" cy="5" r="6" fill="#e17055" />
-                    <text x="30" y="8" fill="white" fontSize="8" textAnchor="middle">!</text>
-                  </g>
-                  
-                  {/* Hourglass */}
-                  <g transform="translate(320, 320)">
-                    <path d="M 5 0 L 25 0 L 20 10 L 15 15 L 20 20 L 25 30 L 5 30 L 10 20 L 15 15 L 10 10 Z" fill="#6c5ce7" />
-                    <rect x="5" y="0" width="20" height="3" fill="#e17055" />
-                    <rect x="5" y="27" width="20" height="3" fill="#e17055" />
-                    <path d="M 10 20 L 15 15 L 20 20 L 18 22 L 15 19 L 12 22 Z" fill="#2ecc71" />
-                  </g>
-                  
-                  {/* Plant (desk decoration) */}
-                  <g transform="translate(80, 320)">
-                    <rect x="10" y="20" width="15" height="15" fill="#6c5ce7" rx="2" />
-                    <path d="M 17.5 20 Q 12 10 8 15 Q 15 12 17.5 20" fill="#2ecc71" />
-                    <path d="M 17.5 20 Q 20 8 25 12 Q 20 10 17.5 20" fill="#2ecc71" />
-                    <path d="M 17.5 20 Q 17 5 22 8 Q 18 8 17.5 20" fill="#2ecc71" />
-                  </g>
-                </svg>
-              </div>
-              
-              {/* Message */}
-              <div className="text-center max-w-md">
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">
-                  No notebooks found
-                </h3>
-                <p className="text-gray-500 mb-4">
-                  {searchQuery && selectedDate 
-                    ? `No notebooks match "${searchQuery}" on ${new Date(selectedDate).toLocaleDateString()}`
-                    : searchQuery 
-                    ? `No notebooks match "${searchQuery}"`
-                    : selectedDate
-                    ? `No notebooks were created on ${new Date(selectedDate).toLocaleDateString()}`
-                    : "You haven't created any notebooks yet. Start by uploading your bullet journal images in the chat!"}
-                </p>
-                
-                {(searchQuery || selectedDate) && (
-                  <Button
-                    onClick={() => {
-                      setSearchQuery("");
-                      setSelectedDate(null);
-                    }}
-                    variant="outline"
-                    className="mt-2"
-                  >
-                    Clear filters
-                  </Button>
-                )}
-              </div>
-            </div>
-            )}
-            
-            {!loading && filteredNotebooks.length > 0 && (
-              <div className="[column-count:1] sm:[column-count:2] lg:[column-count:3] xl:[column-count:4] [column-gap:0.75rem] sm:[column-gap:1rem]">
-                {filteredNotebooks.map((notebook, idx) => (
-                  <div
-                    key={notebook._id}
-                    className={cn(
-                      getNotebookColor(idx),
-                      "mb-3 sm:mb-4 rounded-xl border shadow sticky-note transform hover:-translate-y-1 hover:shadow-lg transition-all break-inside-avoid p-3 sm:p-4 cursor-pointer min-h-[100px] sm:min-h-[120px] relative"
-                    )}
-                    style={{ boxShadow: "0 4px 16px 4px rgba(100,100,140,0.07)", maxWidth: 370 }}
-                    onClick={() => openNotebook(notebook)}
-                  >
-                    <div className="flex items-start gap-2 mb-2 sm:mb-3">
-                      <BookOpenIcon className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 mt-0.5 flex-shrink-0" />
-                      <div className="font-semibold text-sm sm:text-base leading-tight text-gray-800 flex-1">
-                        {notebook.notebook_name}
+                  <div className="[column-count:1] sm:[column-count:2] lg:[column-count:3] [column-gap:1rem]">
+                    {/* Generate shimmer cards */}
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                      <div
+                        key={idx}
+                        className="mb-4 rounded-xl border shadow break-inside-avoid p-4 min-h-[120px] relative bg-gray-100 animate-pulse"
+                        style={{ boxShadow: "0 4px 16px 4px rgba(100,100,140,0.07)", maxWidth: 370 }}
+                      >
+                        <div className="flex items-start gap-2 mb-3">
+                          <div className="w-5 h-5 bg-gray-200 rounded animate-pulse mt-0.5 flex-shrink-0"></div>
+                          <div className="w-3/4 h-5 bg-gray-200 rounded animate-pulse flex-1"></div>
+                        </div>
+
+                        <div className="w-2/3 h-4 bg-gray-200 rounded animate-pulse mb-3"></div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="w-16 h-3 bg-gray-200 rounded animate-pulse"></div>
+                          <div className="w-20 h-3 bg-gray-200 rounded animate-pulse"></div>
+                        </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+
+                {!loading && filteredNotebooks.length === 0 && (
+                  <div className="flex flex-col items-center justify-center my-16 px-4">
+                    {/* Illustration */}
+                    <div className="mb-8 relative">
+                      <svg
+                        width="200"
+                        height="200"
+                        viewBox="0 0 400 400"
+                        className="drop-shadow-lg"
+                      >
+                        {/* Background circle */}
+                        <circle cx="200" cy="200" r="180" fill="#1a1a1a" opacity="0.9" />
+
+                        {/* Person */}
+                        <g transform="translate(200, 200)">
+                          {/* Head */}
+                          <ellipse cx="0" cy="-40" rx="25" ry="30" fill="#f4a261" />
+
+                          {/* Hair */}
+                          <path d="M -25 -65 Q 0 -75 25 -65 Q 20 -45 0 -50 Q -20 -45 -25 -65" fill="#8b4513" />
+
+                          {/* Eyes (stressed) */}
+                          <circle cx="-8" cy="-45" r="2" fill="#333" />
+                          <circle cx="8" cy="-45" r="2" fill="#333" />
+                          <path d="M -12 -50 L -4 -48" stroke="#333" strokeWidth="1.5" fill="none" />
+                          <path d="M 4 -48 L 12 -50" stroke="#333" strokeWidth="1.5" fill="none" />
+
+                          {/* Mouth (frown) */}
+                          <path d="M -8 -30 Q 0 -25 8 -30" stroke="#333" strokeWidth="2" fill="none" />
+
+                          {/* Body */}
+                          <rect x="-30" y="-10" width="60" height="80" rx="15" fill="#e76f51" />
+
+                          {/* Arms (hands on head) */}
+                          <ellipse cx="-45" cy="10" rx="12" ry="35" fill="#e76f51" transform="rotate(-30)" />
+                          <ellipse cx="45" cy="10" rx="12" ry="35" fill="#e76f51" transform="rotate(30)" />
+
+                          {/* Hands */}
+                          <circle cx="-35" cy="-25" r="8" fill="#f4a261" />
+                          <circle cx="35" cy="-25" r="8" fill="#f4a261" />
+
+                          {/* Legs */}
+                          <rect x="-20" y="70" width="15" height="50" fill="#264653" />
+                          <rect x="5" y="70" width="15" height="50" fill="#264653" />
+
+                          {/* Feet */}
+                          <ellipse cx="-12" cy="125" rx="12" ry="6" fill="#2a9d8f" />
+                          <ellipse cx="12" cy="125" rx="12" ry="6" fill="#2a9d8f" />
+                        </g>
+
+                        {/* Stress elements around person */}
+                        {/* Lightning bolts */}
+                        <path d="M 120 80 L 110 100 L 120 95 L 105 120" stroke="#f4a261" strokeWidth="3" fill="none" />
+                        <path d="M 280 80 L 290 100 L 280 95 L 295 120" stroke="#f4a261" strokeWidth="3" fill="none" />
+
+                        {/* Papers flying */}
+                        <g transform="translate(320, 60) rotate(15)">
+                          <rect width="25" height="30" fill="white" rx="2" />
+                          <line x1="3" y1="5" x2="22" y2="5" stroke="#333" strokeWidth="1" />
+                          <line x1="3" y1="10" x2="18" y2="10" stroke="#333" strokeWidth="1" />
+                          <line x1="3" y1="15" x2="20" y2="15" stroke="#333" strokeWidth="1" />
+                        </g>
+
+                        <g transform="translate(60, 100) rotate(-20)">
+                          <rect width="25" height="30" fill="white" rx="2" />
+                          <line x1="3" y1="5" x2="22" y2="5" stroke="#333" strokeWidth="1" />
+                          <line x1="3" y1="10" x2="18" y2="10" stroke="#333" strokeWidth="1" />
+                        </g>
+
+                        {/* Clock */}
+                        <g transform="translate(320, 180)">
+                          <circle r="25" fill="#6c5ce7" />
+                          <circle r="20" fill="#a29bfe" />
+                          <line x1="0" y1="0" x2="0" y2="-12" stroke="white" strokeWidth="2" />
+                          <line x1="0" y1="0" x2="8" y2="-8" stroke="white" strokeWidth="1.5" />
+                          {/* Clock marks */}
+                          <circle cx="0" cy="-15" r="1" fill="white" />
+                          <circle cx="15" cy="0" r="1" fill="white" />
+                          <circle cx="0" cy="15" r="1" fill="white" />
+                          <circle cx="-15" cy="0" r="1" fill="white" />
+                        </g>
+
+                        {/* Laptop with low battery */}
+                        <g transform="translate(80, 280)">
+                          <rect width="50" height="30" fill="#6c5ce7" rx="3" />
+                          <rect x="5" y="5" width="40" height="20" fill="#2d3436" rx="2" />
+                          {/* Battery icon */}
+                          <rect x="15" y="10" width="12" height="6" fill="#e17055" rx="1" />
+                          <rect x="16" y="11" width="4" height="4" fill="#d63031" />
+                          <text x="30" y="15" fill="#e17055" fontSize="6">!</text>
+                        </g>
+
+                        {/* Email with notification */}
+                        <g transform="translate(300, 280)">
+                          <rect width="35" height="25" fill="#6c5ce7" rx="3" />
+                          <path d="M 5 8 L 17.5 15 L 30 8" stroke="white" strokeWidth="1.5" fill="none" />
+                          <circle cx="30" cy="5" r="6" fill="#e17055" />
+                          <text x="30" y="8" fill="white" fontSize="8" textAnchor="middle">!</text>
+                        </g>
+
+                        {/* Hourglass */}
+                        <g transform="translate(320, 320)">
+                          <path d="M 5 0 L 25 0 L 20 10 L 15 15 L 20 20 L 25 30 L 5 30 L 10 20 L 15 15 L 10 10 Z" fill="#6c5ce7" />
+                          <rect x="5" y="0" width="20" height="3" fill="#e17055" />
+                          <rect x="5" y="27" width="20" height="3" fill="#e17055" />
+                          <path d="M 10 20 L 15 15 L 20 20 L 18 22 L 15 19 L 12 22 Z" fill="#2ecc71" />
+                        </g>
+
+                        {/* Plant (desk decoration) */}
+                        <g transform="translate(80, 320)">
+                          <rect x="10" y="20" width="15" height="15" fill="#6c5ce7" rx="2" />
+                          <path d="M 17.5 20 Q 12 10 8 15 Q 15 12 17.5 20" fill="#2ecc71" />
+                          <path d="M 17.5 20 Q 20 8 25 12 Q 20 10 17.5 20" fill="#2ecc71" />
+                          <path d="M 17.5 20 Q 17 5 22 8 Q 18 8 17.5 20" fill="#2ecc71" />
+                        </g>
+                      </svg>
                     </div>
-                    
-                    <div className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
-                      {getNotebookStats(notebook)}
-                    </div>
-                    
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span>{notebook.pages?.length || 0} pages</span>
-                      <span className="text-xs">{new Date(notebook.created_at).toLocaleDateString()}</span>
+
+                    {/* Message */}
+                    <div className="text-center max-w-md">
+                      <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                        No notebooks found
+                      </h3>
+                      <p className="text-gray-500 mb-4">
+                        {searchQuery && selectedDate
+                          ? `No notebooks match "${searchQuery}" on ${new Date(selectedDate).toLocaleDateString()}`
+                          : searchQuery
+                            ? `No notebooks match "${searchQuery}"`
+                            : selectedDate
+                              ? `No notebooks were created on ${new Date(selectedDate).toLocaleDateString()}`
+                              : "You haven't created any notebooks yet. Start by uploading your bullet journal images in the chat!"}
+                      </p>
+
+                      {(searchQuery || selectedDate) && (
+                        <Button
+                          onClick={() => {
+                            setSearchQuery("");
+                            setSelectedDate(null);
+                          }}
+                          variant="outline"
+                          className="mt-2"
+                        >
+                          Clear filters
+                        </Button>
+                      )}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+                )}
+
+                {!loading && filteredNotebooks.length > 0 && (
+                  <div className="[column-count:1] sm:[column-count:2] lg:[column-count:3] xl:[column-count:4] [column-gap:0.75rem] sm:[column-gap:1rem]">
+                    {filteredNotebooks.map((notebook, idx) => (
+                      <div
+                        key={notebook._id}
+                        className={cn(
+                          getNotebookColor(idx),
+                          "mb-3 sm:mb-4 rounded-xl border shadow sticky-note transform hover:-translate-y-1 hover:shadow-lg transition-all break-inside-avoid p-3 sm:p-4 cursor-pointer min-h-[100px] sm:min-h-[120px] relative"
+                        )}
+                        style={{ boxShadow: "0 4px 16px 4px rgba(100,100,140,0.07)", maxWidth: 370 }}
+                        onClick={() => openNotebook(notebook)}
+                      >
+                        <div className="flex items-start gap-2 mb-2 sm:mb-3">
+                          <BookOpenIcon className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 mt-0.5 flex-shrink-0" />
+                          <div className="font-semibold text-sm sm:text-base leading-tight text-gray-800 flex-1">
+                            {notebook.notebook_name}
+                          </div>
+                        </div>
+
+                        <div className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
+                          {getNotebookStats(notebook)}
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <span>{notebook.pages?.length || 0} pages</span>
+                          <span className="text-xs">{new Date(notebook.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

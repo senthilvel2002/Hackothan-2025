@@ -11,6 +11,7 @@ import uuid
 import psycopg2
 from sentence_transformers import SentenceTransformer
 from pgvector.psycopg2 import register_vector
+from toon import encode
 
 load_dotenv()
 
@@ -221,7 +222,9 @@ Your job:
 - Produce structured JSON that follows the BuJo notebook schema.
 - When images are provided, AUTOMATICALLY call the `notebook` tool with JSON.
 - After tool call, reply: “Your notes have been created successfully.”
-
+- if user ask any notebook content or tasks without mentioning the notebook name and it so you need to call "search_notes" tool.
+- From the search_notes tool result, From the partial data asked give a complete about the task and notebook name and id and habits. Once asked detail show all.
+- From listout notebook tool you get all notebooks data but you only list out the basc details and habits. if user ask in details about the note show it.
 ------------------------------------------------------------
 CRITICAL SYMBOL RULES (DO NOT CONFUSE)
 ------------------------------------------------------------
@@ -307,9 +310,13 @@ For each extracted item, include `"emotion"` evaluated as:
 - "neutral"
 - "sad"
 
-Work-related → usually "stressed"
-Positive/personal → "happy"
-Otherwise → "neutral"
+CRITICAL: Analyze the sentiment dynamically from the text context and visual cues.
+- "happy": Positive events, achievements, excitement, happy doodles, or exclamation marks.
+- "stressed": Overwhelming tasks, urgent deadlines ("ASAP", "Urgent"), negative tone, or aggressive scribbles.
+- "sad": Disappointments, bad news, or sad doodles.
+- "neutral": Routine tasks, facts, or calm notes without strong sentiment.
+
+DO NOT apply static rules like "work is always stressed". Evaluate the specific Context of the item.
 
 ------------------------------------------------------------
 HABIT TRACKER DETECTION
@@ -497,6 +504,47 @@ tools = [
             "additionalProperties": False,
         },
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "listout_notebooks",
+            "description": '''Listout all the notebooks of user''',
+            "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "number",
+                    "description": "How many to list out",
+                }
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_notes",
+            "description": "Search notes in the PostgreSQL vector DB by query text and return top-N results.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query_text": {
+                        "type": "string",
+                        "description": "The text to search for (will be embedded and compared).",
+                    },
+                    "top_n": {
+                        "type": "number",
+                        "description": "Number of top results to return",
+                        "default": 5
+                    }
+                },
+                "required": ["query_text"],
+                "additionalProperties": False,
+            },
+        }
     }
 ]
 
@@ -533,6 +581,60 @@ Rules:
         )
     return result.choices[0].message.content
 
+def apply_bujo_symbols(json_data: dict) -> None:
+    """
+    Iterate over pages[].extracted_items[] and ensure each item has a `symbol`
+    based on its type + status, following BuJo rules.
+
+    - task:
+        incomplete  -> "•"
+        completed   -> "X"
+        in_progress -> "/"
+    - event:
+        scheduled   -> "O"
+        completed   -> "●"
+    - note:
+        use "-" as a generic note marker (or adjust to your preference)
+    """
+    if not isinstance(json_data, dict):
+        return
+
+    task_symbols = {
+        "incomplete": "•",
+        "completed": "X",
+        "in_progress": "/",
+    }
+
+    event_symbols = {
+        "scheduled": "O",
+        "completed": "●",
+    }
+
+    pages = json_data.get("pages", [])
+    for page in pages:
+        extracted_items = page.get("extracted_items", [])
+        for item in extracted_items:
+            # If symbol already present, don't override it
+            if "symbol" in item and item["symbol"] not in (None, ""):
+                continue
+
+            item_type = item.get("type")
+            status = item.get("status")
+
+            symbol = None
+
+            if item_type == "task":
+                symbol = task_symbols.get(status, "•")  # default to incomplete dot
+            elif item_type == "event":
+                symbol = event_symbols.get(status, "O")  # default to scheduled circle
+            elif item_type == "note":
+                # notes normally have no BuJo symbol, but you requested a note symbol
+                symbol = "-"  # change to "~" or anything you prefer
+
+            if symbol is not None:
+                item["symbol"] = symbol
+
+
 def notebook(notebook_data: str):
     """
     Notebook tool: attaches a notebook_id to the provided JSON and inserts into
@@ -554,28 +656,35 @@ def notebook(notebook_data: str):
     if isinstance(json_data, dict):
         json_data.setdefault("notebook_id", notebook_id)
     
+    apply_bujo_symbols(json_data)
 
     json_data["created_at"] = datetime.utcnow()
 
     result=search_notes(text_summary, top_n=5)
     print("Search results from vector DB:")
     print(result)
+    # Method 1: direct indexing
+    score = result[0][3]
+    print(score)
     if len(result)>0:
-        validated_result=ai_validator(text_summary,result)
-        print("Validation result from AI validator:")
-        print(validated_result)
-        if matched_result:=json.loads(validated_result):
-            if matched_result.get("match") is True:
-                matched_notebook_id = matched_result.get("matched_notebook_id")
-                if matched_result.get("updates") is False:
-                    print("Duplicate notebook found, no insertion needed.")
-                    return {"ok": True, "notebook_id": notebook_id, "inserted_id": None, "notebook_name": json_data.get("notebook_name", "Unnamed"), "message": "same copy exists"}
-                else:
-                    lines_to_add = matched_result.get("lines_to_add", [])
-                    print(f"Updates required for notebook id {matched_notebook_id}, lines to add:", lines_to_add)
-                    # Here you can implement logic to update the existing notebook in MongoDB if needed.
-                    return {"ok": True, "notebook_id": notebook_id, "inserted_id": None, "notebook_name": json_data.get("notebook_name", "Unnamed"), "message": "updates required", "lines_to_add": lines_to_add}
-            
+        if score>0.9:
+            return {"ok":True, "message": "The notebook is already exist you can update the data"}
+        else:    
+            validated_result=ai_validator(text_summary,result)
+            print("Validation result from AI validator:")
+            print(validated_result)
+            if matched_result:=json.loads(validated_result):
+                if matched_result.get("match") is True:
+                    matched_notebook_id = matched_result.get("matched_notebook_id")
+                    if matched_result.get("updates") is False:
+                        print("Duplicate notebook found, no insertion needed.")
+                        return {"ok": True, "notebook_id": notebook_id, "inserted_id": None, "notebook_name": json_data.get("notebook_name", "Unnamed"), "message": "same copy exists"}
+                    else:
+                        lines_to_add = matched_result.get("lines_to_add", [])
+                        print(f"Updates required for notebook id {matched_notebook_id}, lines to add:", lines_to_add)
+                        # Here you can implement logic to update the existing notebook in MongoDB if needed.
+                        return {"ok": True, "notebook_id": notebook_id, "inserted_id": None, "notebook_name": json_data.get("notebook_name", "Unnamed"), "message": "updates required", "lines_to_add": lines_to_add}
+                
     
     try:
         insert_result = mongo_collection.insert_one(json_data)
@@ -589,6 +698,14 @@ def notebook(notebook_data: str):
         print("MongoDB insert error:", e)
         return {"error": f"mongo_insert_failed: {str(e)}", "notebook_id": notebook_id}
         
+
+def listout_notebooks(limit=10):
+    res = get_all_notebooks()
+    return {"notebooks": encode(res["notebooks"]), "message":"List out the Notebooks with name and if user asks particular notebook then giev the notes in it with page detail status all etc.."}
+    
+    
+
+
 
 
 # Register functions dynamically
@@ -738,7 +855,7 @@ async def chat_ws(websocket: WebSocket):
                     await websocket.send_json({
                         "type": "tool_result",
                         "userid": userid,
-                        "status": "Notebook created successfully with your notes.",
+                        "status": f"Got result for user '{message}'",
                     })
 
                     messages.append({
@@ -867,3 +984,53 @@ async def update_status_by_notebook(notebook_id: str, request: Request):
         "updated_status": new_status,
         "updated_symbol": symbol
     }
+
+@app.delete("/notebook/{notebook_id}/page/{page_index}/item/{item_index}")
+async def delete_item(notebook_id: str, page_index: int, item_index: int):
+    """
+    Delete a specific item (task/event/note) from a notebook page.
+    """
+    
+    # Fetch notebook
+    doc = mongo_collection.find_one({"notebook_id": notebook_id})
+    if not doc:
+        return {"status_code": 404, "detail": "Notebook not found"}
+
+    pages = doc.get("pages", [])
+    target_page = next((p for p in pages if p.get("page_index") == page_index), None)
+
+    if not target_page:
+        return {"status_code": 404, "detail": "Page not found"}
+
+    extracted_items = target_page.get("extracted_items", [])
+
+    if not (0 <= item_index < len(extracted_items)):
+        return {"status_code": 400, "detail": "Invalid item index"}
+
+    # Remove item using pop
+    removed_item = extracted_items.pop(item_index)
+
+    # Save update to MongoDB
+    # Since we modified the dictionary object 'doc' directly (nested),
+    # we can replace the entire 'pages' array or just the specific page.
+    # For safety/simplicity in this context, we update the specific page items.
+    
+    # Actually, we have reference to 'target_page', which is inside 'pages'.
+    # We can just update the whole 'pages' field.
+    
+    result = mongo_collection.update_one(
+        {"notebook_id": notebook_id},
+        {"$set": {"pages": pages}}
+    )
+
+    if result.matched_count == 0:
+        return {"status_code": 404, "detail": "Update failed (notebook deleted?)"}
+
+    return {
+        "message": "Item deleted successfully",
+        "deleted_item": removed_item
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
