@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { PlusIcon } from "./icons";
 import { useSidebar } from "./ui/sidebar";
 import { VisibilitySelector, type VisibilityType } from "./visibility-selector";
+import { CalendarDaysIcon } from "lucide-react";
 
 function PureChatHeader({
   chatId,
@@ -32,7 +33,15 @@ function PureChatHeader({
         {(!open || windowWidth < 768) && (
           <span className="font-semibold text-base md:text-lg">Bujo GPT</span>
         )}
-        
+        {/* All Notes Button */}
+        <Button
+          className="ml-2 h-8 px-2 md:h-fit md:px-2 font-semibold text-indigo-700 border-indigo-300 bg-indigo-50 hover:bg-indigo-100 flex items-center gap-2 transition-all shadow-sm"
+          onClick={() => router.push("/notes")}
+          variant="outline"
+        >
+          <CalendarDaysIcon className="w-5 h-5" />
+          <span className="hidden md:inline">All Notes</span>
+        </Button>
         {(!open || windowWidth < 768) && (
           <Button
             className="ml-auto h-8 px-2 md:h-fit md:px-2"

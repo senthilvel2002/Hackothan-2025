@@ -13,10 +13,28 @@ export const TEST_PROMPTS: Record<string, ModelMessage> = {
     role: "user",
     content: [{ type: "text", text: "Thanks!" }],
   },
-  USER_NEXTJS: {
+  USER_TODAY_PLAN: {
     role: "user",
     content: [
-      { type: "text", text: "What are the advantages of using Next.js?" },
+      { type: "text", text: "Show me my today's plan from my notebooks" },
+    ],
+  },
+  USER_WEEK_PLAN: {
+    role: "user",
+    content: [
+      { type: "text", text: "Show me my upcoming week's plan from my notebooks" },
+    ],
+  },
+  USER_ALL_NOTES: {
+    role: "user",
+    content: [
+      { type: "text", text: "Get my notes and tasks from all notebooks" },
+    ],
+  },
+  USER_SCHEDULED_TASKS: {
+    role: "user",
+    content: [
+      { type: "text", text: "What tasks and events do I have scheduled this week?" },
     ],
   },
   USER_IMAGE_ATTACHMENT: {

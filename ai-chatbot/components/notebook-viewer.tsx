@@ -75,46 +75,6 @@ interface ChartData {
   color: string;
 }
 
-// Bar Chart Component
-function BarChart({ data, height = 200 }: { data: ChartData[]; height?: number }) {
-  const maxValue = Math.max(...data.map((d) => d.value), 1);
-  const barHeight = height / Math.max(data.length, 1);
-
-  return (
-    <div className="flex flex-col gap-2">
-      {data.map((item, idx) => {
-        const percentage = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
-        return (
-          <div key={idx} className="flex items-center gap-3">
-            <div className="w-20 text-sm font-medium text-right shrink-0">
-              {item.label}
-            </div>
-            <div className="flex-1 relative">
-              <div className="h-8 bg-muted rounded-md overflow-hidden">
-                <div
-                  className="h-full rounded-md transition-all duration-300 flex items-center justify-end pr-2"
-                  style={{
-                    width: `${percentage}%`,
-                    backgroundColor: item.color,
-                  }}
-                >
-                  {item.value > 0 && (
-                    <span className="text-xs font-semibold text-white">
-                      {item.value}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="w-12 text-sm text-muted-foreground text-right shrink-0">
-              {item.value}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function PieChart({ data, size = 200 }: { data: ChartData[]; size?: number }) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
@@ -533,68 +493,6 @@ function NotebookStructuredView({ data }: { data: NotebookData }) {
         )}
       </div>
 
-      {/* Bar Charts */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {overallStatusChartData.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                Status Breakdown (Bar Chart)
-              </CardTitle>
-              <CardDescription>All statuses found in your notebook</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <BarChart data={overallStatusChartData} height={200} />
-            </CardContent>
-          </Card>
-        )}
-
-        {taskStatusChartData.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5" />
-                Task Status (Bar Chart)
-              </CardTitle>
-              <CardDescription>Task statuses from actual data</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <BarChart data={taskStatusChartData} height={200} />
-            </CardContent>
-          </Card>
-        )}
-
-        {symbolChartData.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                Symbols (Bar Chart)
-              </CardTitle>
-              <CardDescription>Symbol distribution from actual data</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <BarChart data={symbolChartData} height={250} />
-            </CardContent>
-          </Card>
-        )}
-
-        {typeChartData.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                Items by Type (Bar Chart)
-              </CardTitle>
-              <CardDescription>Content type distribution</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <BarChart data={typeChartData} height={200} />
-            </CardContent>
-          </Card>
-        )}
-      </div>
 
       {/* Pages Content */}
       <div className="space-y-6">

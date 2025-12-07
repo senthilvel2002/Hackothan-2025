@@ -306,6 +306,7 @@ export const PreviewMessage = memo(
 
 export const ThinkingMessage = ({ status }: { status?: string }) => {
   const role = "assistant";
+  // Always use the passed-in status, fallback to generic as last resort
   const displayStatus = status || "Thinking...";
 
   return (

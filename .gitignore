@@ -1,0 +1,16 @@
+.env
+venv/
+index.html
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.vscode/
+node_modules/
+dist/
+*.log
+*.sqlite3
+*.bak
+*.swp
+*.tmp
+coverage/
