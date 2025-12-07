@@ -8,6 +8,8 @@ import redis
 import pymongo
 from pymongo.errors import PyMongoError
 import uuid
+import psycopg2
+from psycopg2.extras import Json
 
 load_dotenv()
 
@@ -59,6 +61,38 @@ except Exception as e:
     mongo_collection = None
 
 
+# PostgreSQL Configuration
+postgres_host = os.getenv("POSTGRES_HOST", "localhost")
+postgres_port = int(os.getenv("POSTGRES_PORT", 5432))
+postgres_db = os.getenv("POSTGRES_DB", "bujogpt_db")
+postgres_user = os.getenv("POSTGRES_USER", "postgres")
+postgres_password = os.getenv("POSTGRES_PASSWORD", "")
+
+DB_CONFIG = {
+    "host": postgres_host,
+    "port": postgres_port,
+    "database": postgres_db,
+    "user": postgres_user,
+    "password": postgres_password
+}
+
+
+def register_vector(conn):
+    """Register pgvector extension if available."""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+        conn.commit()
+        cursor.close()
+    except Exception as e:
+        print(f"Warning: Could not register vector extension: {e}")
+
+
+def log_error(user_id, function_name, error_message, timestamp):
+    """Log errors to console or external service."""
+    print(f"[ERROR] {timestamp} | User: {user_id} | Function: {function_name} | Error: {error_message}")
+
+
 # Store message history in Redis
 def store_message_history(user_id, role, content):
     try:
@@ -83,6 +117,153 @@ def get_message_history(user_id):
         print(f"Error retrieving message history: {str(e)}")
         return []
 
+
+def extract_notebook_text(notebook_json: dict) -> str:
+    """
+    Extracts a readable text summary from a notebook JSON:
+    - Notebook name
+    - Page count
+    - File names
+    - Extracted items (time + content only)
+    """
+    notebook_name = notebook_json.get("notebook_name", "Untitled Notebook")
+    pages = notebook_json.get("pages", [])
+
+    output = []
+    output.append(f"Notebook: {notebook_name}")
+    output.append(f"Total Pages: {len(pages)}\n")
+
+    for page in pages:
+        page_index = page.get("page_index")
+        file_name = page.get("page_metadata", {}).get("file_name", "unknown")
+
+        output.append(f"Page {page_index}: {file_name}")
+
+        extracted_items = page.get("extracted_items", [])
+
+        for item in extracted_items:
+            time = item.get("time")
+            content = item.get("content", "")
+
+            if time:
+                output.append(f"{time} - {content}")
+            else:
+                output.append(content)
+
+        output.append("")  # blank line between pages
+
+    return "\n".join(output)
+
+
+def insert_notebook_to_postgres(notebook_id, notebook_name, notebook_data, embedding):
+    """
+    Inserts or updates a notebook into PostgreSQL table 'bujogpt'.
+
+    - If table does NOT exist → create it.
+    - If notebook_id exists → update it.
+    - Otherwise → insert new record.
+    """
+    conn = None
+    cursor = None
+
+    try:
+        if not notebook_id or not notebook_name:
+            raise ValueError("notebook_id and notebook_name are required")
+
+        if embedding is None or len(embedding) == 0:
+            raise ValueError("embedding must be a non-empty list/vector")
+
+        embedding_dim = len(embedding)
+
+        conn = psycopg2.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+
+        register_vector(conn)
+
+        # Check if table exists
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'bujogpt'
+            );
+        """)
+        table_exists = cursor.fetchone()[0]
+
+        # Create table only if not exists
+        if not table_exists:
+            create_table_sql = f"""
+                CREATE TABLE bujogpt (
+                    notebook_id   TEXT PRIMARY KEY,
+                    notebook_name TEXT NOT NULL,
+                    notebook_data JSONB NOT NULL,
+                    embedding     VECTOR(1024)
+                );
+            """
+            cursor.execute(create_table_sql)
+
+        # Check if notebook_id already exists
+        cursor.execute("SELECT notebook_id FROM bujogpt WHERE notebook_id = %s;", (notebook_id,))
+        exists = cursor.fetchone()
+
+        if exists:
+            # UPDATE
+            update_sql = """
+                UPDATE bujogpt
+                SET notebook_name = %s,
+                    notebook_data = %s,
+                    embedding     = %s
+                WHERE notebook_id = %s;
+            """
+            cursor.execute(update_sql, (
+                notebook_name,
+                Json(notebook_data),
+                embedding,
+                notebook_id
+            ))
+            action = "updated"
+        else:
+            # INSERT
+            insert_sql = """
+                INSERT INTO bujogpt (notebook_id, notebook_name, notebook_data, embedding)
+                VALUES (%s, %s, %s, %s);
+            """
+            cursor.execute(insert_sql, (
+                notebook_id,
+                notebook_name,
+                Json(notebook_data),
+                embedding
+            ))
+            action = "inserted"
+
+        conn.commit()
+
+        return {
+            "status": True,
+            "statusCode": 200,
+            "message": f"Notebook successfully {action}.",
+            "notebook_id": notebook_id
+        }
+
+    except Exception as e:
+        try:
+            log_error("system", "insert_notebook_to_postgres", str(e), datetime.now())
+        except Exception:
+            pass
+
+        if conn:
+            conn.rollback()
+
+        return {
+            "status": False,
+            "statusCode": 500,
+            "error": f"Error inserting/updating notebook: {str(e)}"
+        }
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 instructions = """
@@ -205,10 +386,33 @@ tools = [
 
   
 
+def generate_embedding(text: str):
+    """
+    Generate embedding for text using OpenAI API.
+    Returns a list of floats representing the embedding vector.
+    """
+    if client is None:
+        # Fallback: return a dummy embedding if OpenAI client is not available
+        # In production, you might want to use a different embedding service
+        print("Warning: OpenAI client not available, using dummy embedding")
+        return [0.0] * 1536  # OpenAI text-embedding-3-small dimension
+    
+    try:
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        print(f"Error generating embedding: {e}")
+        # Return dummy embedding on error
+        return [0.0] * 1536
+
+
 def notebook(notebook_data: str):
     """
     Notebook tool: attaches a notebook_id to the provided JSON and inserts into
-    the MongoDB collection `bujogpt` if available. Returns dict with status.
+    both PostgreSQL (with embeddings) and MongoDB if available. Returns dict with status.
     """
     notebook_id = str(uuid.uuid4())
     print("Notebook function called, id:", notebook_id)
@@ -227,19 +431,54 @@ def notebook(notebook_data: str):
 
     json_data["created_at"] = datetime.utcnow()
 
-    # Attempt to insert into MongoDB if configured
+    # Extract notebook name
+    notebook_name = json_data.get("notebook_name", "Untitled Notebook")
+    
+    # Generate text summary for embedding
+    notebook_text = extract_notebook_text(json_data)
+    
+    # Generate embedding
+    embedding = generate_embedding(notebook_text)
+    
+    # Insert into PostgreSQL with embedding
+    postgres_result = insert_notebook_to_postgres(
+        notebook_id=notebook_id,
+        notebook_name=notebook_name,
+        notebook_data=json_data,
+        embedding=embedding
+    )
+    
+    # Also insert into MongoDB if configured (for backward compatibility)
+    mongo_result = None
     if mongo_collection is not None:
         try:
             insert_result = mongo_collection.insert_one(json_data)
             inserted_id = str(insert_result.inserted_id)
             print("Inserted notebook into MongoDB, id:", inserted_id)
-            return {"ok": True, "notebook_id": notebook_id, "inserted_id": inserted_id}
+            mongo_result = {"ok": True, "notebook_id": notebook_id, "inserted_id": inserted_id}
         except PyMongoError as e:
             print("MongoDB insert error:", e)
-            return {"error": f"mongo_insert_failed: {str(e)}", "notebook_id": notebook_id}
+            mongo_result = {"error": f"mongo_insert_failed: {str(e)}", "notebook_id": notebook_id}
+    
+    # Return PostgreSQL result if successful, otherwise MongoDB result
+    if postgres_result.get("status"):
+        return {
+            "ok": True,
+            "notebook_id": notebook_id,
+            "inserted_id": notebook_id,
+            "postgres": postgres_result,
+            "mongo": mongo_result
+        }
+    elif mongo_result and mongo_result.get("ok"):
+        return mongo_result
     else:
-        print("MongoDB not configured; skipping insert.")
-        return {"ok": True, "notebook_id": notebook_id, "inserted_id": None}
+        # Both failed
+        return {
+            "error": "Both PostgreSQL and MongoDB inserts failed",
+            "notebook_id": notebook_id,
+            "postgres_error": postgres_result.get("error"),
+            "mongo_error": mongo_result.get("error") if mongo_result else "MongoDB not configured"
+        }
 
 
 # Register functions dynamically
