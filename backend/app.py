@@ -11,6 +11,7 @@ import uuid
 import psycopg2
 from sentence_transformers import SentenceTransformer
 from pgvector.psycopg2 import register_vector
+from toon import encode
 
 load_dotenv()
 
@@ -221,7 +222,11 @@ Your job:
 - Produce structured JSON that follows the BuJo notebook schema.
 - When images are provided, AUTOMATICALLY call the `notebook` tool with JSON.
 - After tool call, reply: “Your notes have been created successfully.”
-
+- if user ask any notebook content or tasks without mentioning the notebook name and it so you need to call "search_notes" tool.
+- From the search_notes tool result, From the partial data asked give a complete about the task and notebook name and id and habits. Once asked detail show all.
+- From listout notebook tool you get all notebooks data but you only list out the basc details and habits. if user ask in details about the note show it.
+- If user asks emotions of them call the get_all_emotions tool and from the result show the emotions in a better markdown visualisation.
+- Dont miss to show the emotions emoji's according to the emotions.
 ------------------------------------------------------------
 CRITICAL SYMBOL RULES (DO NOT CONFUSE)
 ------------------------------------------------------------
@@ -256,7 +261,11 @@ The symbol determines the item type and status.
    - Type: note
    - Status: null
 
-7. Unknown symbol → keep original, mark type: "custom:<symbol>"
+7. DASH or TILDE for SubTasks →  -  or ~
+    - Type: subtask (of last task/event above)
+    - Status: inherit from parent task/event
+
+8. Unknown symbol → keep original, mark type: "custom:<symbol>"
 
 ------------------------------------------------------------
 GENERAL EXTRACTION RULES
@@ -297,6 +306,8 @@ Events:
 - ● filled → completed
 
 Notes/emotions: status = null
+
+SUBTASKS inherit status from parent task/event.
 
 ------------------------------------------------------------
 EMOTION ANALYSIS (MANDATORY)
@@ -340,7 +351,9 @@ BEHAVIOR FOR IMAGE UPLOADS
 2. If YES:
    - Extract everything into notebook JSON.
    - IMMEDIATELY call the `notebook` tool with JSON.
-   - After tool call → say: “Your notes have been created successfully.”
+   - After tool call → say: “Your notes have been created successfully.” if the file is created successfully.
+   - And mentioned the notebook name.
+   - according to the return response from the tool give a proper message to the user.
 
 ------------------------------------------------------------
 BEHAVIOR FOR TEXT UPLOADS
@@ -497,7 +510,81 @@ tools = [
             "additionalProperties": False,
         },
         }
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "listout_notebooks",
+            "description": '''Listout all the notebooks of user''',
+            "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "number",
+                    "description": "How many to list out",
+                },
+                "start_date": {
+                    "type":"string",
+                    "description":"Here mention date according to user query"
+                },
+                "end_date": {
+                    "type":"string",
+                    "description":"Here mention date according to user query"
+                },
+                "task_status": {
+                    "type":"string",
+                    "description":"Here it may be scheduled, completed, incomplete etc.."
+                },
+
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_notes",
+            "description": "Search notes in the PostgreSQL vector DB by query text and return top-N results.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query_text": {
+                        "type": "string",
+                        "description": "The text to search for (will be embedded and compared).",
+                    },
+                    "top_n": {
+                        "type": "number",
+                        "description": "Number of top results to return",
+                        "default": 5
+                    }
+                },
+                "required": ["query_text"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_all_emotions",
+            "description": '''It is 'get_all_emotions' tool to get all the emotions from the notebook. It is also a analysis tool for the user to know about their emotions in the notebook.''',
+            "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "number",
+                    "description": "How many to list out",
+                },
+                
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        }
+    },
+    
 ]
 
 def ai_validator(text_summary, result):
@@ -533,6 +620,60 @@ Rules:
         )
     return result.choices[0].message.content
 
+def apply_bujo_symbols(json_data: dict) -> None:
+    """
+    Iterate over pages[].extracted_items[] and ensure each item has a `symbol`
+    based on its type + status, following BuJo rules.
+
+    - task:
+        incomplete  -> "•"
+        completed   -> "X"
+        in_progress -> "/"
+    - event:
+        scheduled   -> "O"
+        completed   -> "●"
+    - note:
+        use "-" as a generic note marker (or adjust to your preference)
+    """
+    if not isinstance(json_data, dict):
+        return
+
+    task_symbols = {
+        "incomplete": "•",
+        "completed": "X",
+        "in_progress": "/",
+    }
+
+    event_symbols = {
+        "scheduled": "O",
+        "completed": "●",
+    }
+
+    pages = json_data.get("pages", [])
+    for page in pages:
+        extracted_items = page.get("extracted_items", [])
+        for item in extracted_items:
+            # If symbol already present, don't override it
+            if "symbol" in item and item["symbol"] not in (None, ""):
+                continue
+
+            item_type = item.get("type")
+            status = item.get("status")
+
+            symbol = None
+
+            if item_type == "task":
+                symbol = task_symbols.get(status, "•")  # default to incomplete dot
+            elif item_type == "event":
+                symbol = event_symbols.get(status, "O")  # default to scheduled circle
+            elif item_type == "note":
+                # notes normally have no BuJo symbol, but you requested a note symbol
+                symbol = "-"  # change to "~" or anything you prefer
+
+            if symbol is not None:
+                item["symbol"] = symbol
+
+
 def notebook(notebook_data: str):
     """
     Notebook tool: attaches a notebook_id to the provided JSON and inserts into
@@ -554,28 +695,36 @@ def notebook(notebook_data: str):
     if isinstance(json_data, dict):
         json_data.setdefault("notebook_id", notebook_id)
     
+    apply_bujo_symbols(json_data)
 
     json_data["created_at"] = datetime.utcnow()
 
     result=search_notes(text_summary, top_n=5)
     print("Search results from vector DB:")
     print(result)
+    
     if len(result)>0:
-        validated_result=ai_validator(text_summary,result)
-        print("Validation result from AI validator:")
-        print(validated_result)
-        if matched_result:=json.loads(validated_result):
-            if matched_result.get("match") is True:
-                matched_notebook_id = matched_result.get("matched_notebook_id")
-                if matched_result.get("updates") is False:
-                    print("Duplicate notebook found, no insertion needed.")
-                    return {"ok": True, "notebook_id": notebook_id, "inserted_id": None, "notebook_name": json_data.get("notebook_name", "Unnamed"), "message": "same copy exists"}
-                else:
-                    lines_to_add = matched_result.get("lines_to_add", [])
-                    print(f"Updates required for notebook id {matched_notebook_id}, lines to add:", lines_to_add)
-                    # Here you can implement logic to update the existing notebook in MongoDB if needed.
-                    return {"ok": True, "notebook_id": notebook_id, "inserted_id": None, "notebook_name": json_data.get("notebook_name", "Unnamed"), "message": "updates required", "lines_to_add": lines_to_add}
-            
+        # Method 1: direct indexing
+        score = result[0][3]
+        print(score)
+        if score>0.9:
+            return {"message": "The notebook is already exists according to that convey message to user."}
+        else:    
+            validated_result=ai_validator(text_summary,result)
+            print("Validation result from AI validator:")
+            print(validated_result)
+            if matched_result:=json.loads(validated_result):
+                if matched_result.get("match") is True:
+                    matched_notebook_id = matched_result.get("matched_notebook_id")
+                    if matched_result.get("updates") is False:
+                        print("Duplicate notebook found, no insertion needed.")
+                        return {"ok": True, "notebook_id": notebook_id, "inserted_id": None, "notebook_name": json_data.get("notebook_name", "Unnamed"), "message": "same copy exists"}
+                    else:
+                        lines_to_add = matched_result.get("lines_to_add", [])
+                        print(f"Updates required for notebook id {matched_notebook_id}, lines to add:", lines_to_add)
+                        # Here you can implement logic to update the existing notebook in MongoDB if needed.
+                        return {"ok": True, "notebook_id": notebook_id, "inserted_id": None, "notebook_name": json_data.get("notebook_name", "Unnamed"), "message": "updates required", "lines_to_add": lines_to_add}
+                
     
     try:
         insert_result = mongo_collection.insert_one(json_data)
@@ -589,6 +738,73 @@ def notebook(notebook_data: str):
         print("MongoDB insert error:", e)
         return {"error": f"mongo_insert_failed: {str(e)}", "notebook_id": notebook_id}
         
+
+def listout_notebooks(limit=10, start_date=None, end_date=None, task_status=None):
+    res = get_all_notebooks()
+    notebooks = res.get("notebooks", [])
+    filtered_notebooks = []
+
+    # Convert start_date and end_date strings to datetime.date objects if provided
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+
+    for nb in notebooks:
+        filtered_pages = []
+        for page in nb.get("pages", []):
+            filtered_items = []
+            for item in page.get("extracted_items", []):
+                # Filter by type/status if asked
+                if task_status and item.get("status") != task_status:
+                    continue
+
+                # Filter by date range if time metadata exists and is in range
+                associated_date_str = item.get("metadata", {}).get("associated_date")
+                if associated_date_str:
+                    try:
+                        associated_date = datetime.strptime(associated_date_str, "%Y-%m-%d").date()
+                        if start_dt and associated_date < start_dt:
+                            continue
+                        if end_dt and associated_date > end_dt:
+                            continue
+                    except:
+                        pass  # ignore parse errors, keep item
+
+                filtered_items.append(item)
+
+            # Include page if it has filtered items
+            if filtered_items:
+                page_copy = page.copy()
+                page_copy["extracted_items"] = filtered_items
+                filtered_pages.append(page_copy)
+
+        # Include notebook if it has pages with filtered items
+        if filtered_pages:
+            nb_copy = nb.copy()
+            nb_copy["pages"] = filtered_pages
+            filtered_notebooks.append(nb_copy)
+
+        if len(filtered_notebooks) >= limit:
+            break
+    
+    return {
+        "notebooks": encode(filtered_notebooks),
+        "message": f"Listed notebooks filtered by date and status. Limit: {limit}"
+    }
+    
+
+def get_all_emotions(limit=5):
+    """
+    Get emotion summary across all notebooks.
+    
+    Returns aggregated emotion data, percentages, and per-notebook summaries.
+    """
+    result = get_all_emotions_summary()
+    
+    if "error" in result:
+        return {"status_code": 500, "detail": result["error"]}
+    
+    return { "data": encode(result), "message": "Emotion summary retrieved successfully. From that build a better markdown visualisation for emotion tracking. Overall emotions and each notebook by notebook mention the emotions of the user with emoji's" }
+
 
 
 # Register functions dynamically
@@ -683,7 +899,7 @@ async def chat_ws(websocket: WebSocket):
                 "role": "developer",
                 "content": (
                     instructions
-                    + " Today current date is " + str(datetime.now())
+                    + " Today current date is " + str(datetime.utcnow())
                     + " Current user id : " + str(userid)
                 )
             })
@@ -735,17 +951,19 @@ async def chat_ws(websocket: WebSocket):
                     result = execute_tool(tool_name, arguments)
                     print(result)
 
-                    await websocket.send_json({
-                        "type": "tool_result",
-                        "userid": userid,
-                        "status": "Notebook created successfully with your notes.",
-                    })
-
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
                         "content": json.dumps(result),
                     })
+
+                    await websocket.send_json({
+                        "type": "tool_result",
+                        "userid": userid,
+                        "status": f"Got result for user '{message}'",
+                    })
+
+                    
 
     except WebSocketDisconnect:
         return
@@ -867,3 +1085,86 @@ async def update_status_by_notebook(notebook_id: str, request: Request):
         "updated_status": new_status,
         "updated_symbol": symbol
     }
+
+def get_all_emotions_summary() -> dict:
+    """
+    Get emotion summary across all notebooks in MongoDB.
+    
+    Returns:
+        Dictionary with aggregated emotion data across all notebooks
+    """
+    if mongo_collection is None:
+        return {"error": "MongoDB not configured."}
+    
+    try:
+        notebooks = list(mongo_collection.find().limit(100))
+        
+        # Initialize aggregated counters
+        total_emotions = {
+            "happy": 0,
+            "stressed": 0,
+            "neutral": 0,
+            "sad": 0
+        }
+        total_items = 0
+        notebook_summaries = []
+        
+        for doc in notebooks:
+            notebook_id = doc.get("notebook_id", "unknown")
+            notebook_name = doc.get("notebook_name", "Unnamed")
+            
+            notebook_emotions = {"happy": 0, "stressed": 0, "neutral": 0, "sad": 0}
+            notebook_item_count = 0
+            
+            pages = doc.get("pages", [])
+            for page in pages:
+                extracted_items = page.get("extracted_items", [])
+                for item in extracted_items:
+                    emotion = item.get("emotion", "neutral")
+                    emotion = emotion.lower() if emotion else "neutral"
+                    if emotion not in total_emotions:
+                        emotion = "neutral"
+                    
+                    total_emotions[emotion] += 1
+                    notebook_emotions[emotion] += 1
+                    total_items += 1
+                    notebook_item_count += 1
+            
+            # Determine dominant emotion for this notebook
+            dominant = max(notebook_emotions.keys(), key=lambda e: notebook_emotions[e]) if notebook_item_count > 0 else None
+            
+            notebook_summaries.append({
+                "notebook_id": notebook_id,
+                "notebook_name": notebook_name,
+                "item_count": notebook_item_count,
+                "dominant_emotion": dominant,
+                "emotions": notebook_emotions
+            })
+        
+        # Calculate percentages
+        percentages = {}
+        for emotion_key in total_emotions:
+            count = total_emotions[emotion_key]
+            percentages[emotion_key] = round((count / total_items * 100), 2) if total_items > 0 else 0
+        
+        # Overall dominant emotion
+        overall_dominant = max(total_emotions.keys(), key=lambda e: total_emotions[e]) if total_items > 0 else None
+        
+        return {
+            "ok": True,
+            "total_notebooks": len(notebooks),
+            "total_items": total_items,
+            "overall_dominant_emotion": overall_dominant,
+            "total_emotions": total_emotions,
+            "percentages": percentages,
+            "notebooks": notebook_summaries
+        }
+    
+    except PyMongoError as e:
+        return {"error": f"MongoDB query failed: {str(e)}"}
+    except Exception as e:
+        return {"error": f"Unexpected error: {str(e)}"}
+
+
+
+
