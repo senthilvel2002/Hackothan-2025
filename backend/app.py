@@ -227,6 +227,17 @@ Your job:
 - From listout notebook tool you get all notebooks data but you only list out the basc details and habits. if user ask in details about the note show it.
 - If user asks emotions of them call the get_all_emotions tool and from the result show the emotions in a better markdown visualisation.
 - Dont miss to show the emotions emoji's according to the emotions.
+
+- For modifying the notebook there is two types one is status update and another is new item addition.
+- For status update just from the user query analyse it and provide page_index, item_index, and new_status in the data parameter .
+- item_index is 0 based index. it starts from 0 to N. first item index is 0.
+- new_status can be "completed", "incomplete",  or "in_progress" for tasks and "scheduled" or "completed" for events.
+- For new task/event/note addition just provide a page index to data parameter where new item needs to be added.
+- For the above notebook id is mandatory.
+- When you aware of the notebook context you can directly call the modify_notebook tool with required parameters.
+- If not call search_notes tool to get the relevant context and find the exact notebook id. Then call the identify_notebook tool to get the complete notebook data.
+- Once you have the notebook data you can call the modify_notebook tool with required parameters.
+- Sometimes user may ask to in the "himalaya and world" in notes in that add this task or event or note or status update in the notebook "himalaya and world" just search the notebook from search_notes tool and get the notebook id and call identify_notebook tool to get the complete notebook data. Then call modify_notebook tool with required parameters.
 ------------------------------------------------------------
 CRITICAL SYMBOL RULES (DO NOT CONFUSE)
 ------------------------------------------------------------
@@ -584,7 +595,79 @@ tools = [
         },
         }
     },
-    
+    {
+        "type": "function",
+        "function": {
+            "name": "modify_notebook",
+            "description": '''It is 'modify_notebook' tool to modify the notebook content. It allows updating or adding new entries in the notebook.
+            For status update operation:
+                    - From the notebook analyze it and Provide page_index, item_index, and new_status in the data parameter .
+                    - new_status can be "completed", "incomplete",  or "in_progress" for tasks and "scheduled" or "completed" for events. 
+                    - in data key pass  {"page_index": 1, "item_index": 2, "new_status": "completed"}
+
+            For new task/event/note addition operation:
+                - From the notebook analyze it and provide a page index to data parameter where new item needs to be added.
+                - In data key pass {"page_index": 1, "new_item": {<complete item JSON as per schema>}}   
+                Complete sample item:
+                {
+                    "type": "task",
+                    "status": "incomplete",
+                    "emotion": "neutral",
+                    "time": "15:30",
+                    "content": "New task content here",
+                    "metadata": {
+                        "confidence": 95,
+                        "notes": "Added via modify_notebook tool",
+                        "associated_date": "2024-08-15",
+                        "page_index": 1,
+                        "is_subtask": false,
+                        "time_block_start": null,
+                        "time_block_end": null
+                    }
+                }     
+            ''',
+            "parameters": {
+            "type": "object",
+            "properties": {
+                "notebook_id": {
+                    "type": "string",
+                    "description": "The unique identifier of the notebook to modify.",
+                },
+                "data": {
+                    "type": "string",
+                    "description": "The data containing updates to apply to the notebook.",
+                },
+                "status_update": {
+                    "type": "boolean",
+                    "description": "Flag indicating if this is a status update operation.",
+                    "default": False
+                }
+                
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "identify_notebook",
+            "description": '''Fetch notebook by ID from MongoDB.''',
+            "parameters": {
+            "type": "object",
+            "properties": {
+                "notebook_id": {
+                    "type": "string",
+                    "description": "The unique identifier of the notebook to fetch.",
+                }
+                
+            },
+            "required": ["notebook_id"],
+            "additionalProperties": False,
+        },
+        }
+    }  
 ]
 
 def ai_validator(text_summary, result):
@@ -791,7 +874,7 @@ def listout_notebooks(limit=10, start_date=None, end_date=None, task_status=None
         "message": f"Listed notebooks filtered by date and status. Limit: {limit}"
     }
     
-
+# emotion analysis tool
 def get_all_emotions(limit=5):
     """
     Get emotion summary across all notebooks.
@@ -805,7 +888,155 @@ def get_all_emotions(limit=5):
     
     return { "data": encode(result), "message": "Emotion summary retrieved successfully. From that build a better markdown visualisation for emotion tracking. Overall emotions and each notebook by notebook mention the emotions of the user with emoji's" }
 
+def identify_notebook(notebook_id: str):
+    """
+    Fetch notebook by ID from MongoDB.
+    """
+    doc = mongo_collection.find_one({"notebook_id": notebook_id})
+    if not doc:
+        return None
+    return encode(doc)
 
+# notebook update tool
+def modify_notebook(notebook_id: str, data, status_update: bool = False):
+    """
+    Update the status of an extracted item inside a specific page.
+    Automatically adjusts symbol based on BuJo rules:
+        incomplete  → •
+        completed   → X
+        in_progress → /
+        scheduled   → O
+    """
+    body = json.loads(data)
+    print(body)
+    if status_update:
+        page_index = body.get("page_index")     # e.g. 1
+        item_index = body.get("item_index")   # e.g. 0..N
+        new_status = body.get("new_status")     # "completed" | "incomplete" | "scheduled" | "in_progress"
+
+        if page_index is None or item_index is None or new_status is None:
+            return {"status_code": 400, "detail": "Missing required fields: page_index, item_index, new_status"}
+
+        # Fetch notebook
+        doc = mongo_collection.find_one({"notebook_id": notebook_id})
+        if not doc:
+            return {"status_code": 404, "detail": "Notebook not found"}
+
+        pages = doc.get("pages", [])
+        target_page = next((p for p in pages if p.get("page_index") == page_index), None)
+
+        if not target_page:
+            return {"status_code": 404, "detail": "Page not found"}
+
+        extracted_items = target_page.get("extracted_items", [])
+
+        if not (0 <= item_index < len(extracted_items)):
+            return {"status_code": 400, "detail": "Invalid item index"}
+
+        item = extracted_items[item_index]
+        item_type = item.get("type")
+
+        # Only tasks/events can change status
+        if item_type not in ["task", "event"]:
+            return {
+                "status_code": 400,
+                "detail": f"Cannot update status of type '{item_type}'. Only tasks/events allowed."
+            }
+
+        # ------------------------------------------
+        # Apply BuJo Symbol Rules
+        # ------------------------------------------
+        # Task Status → Symbol Mapping
+        task_symbols = {
+            "incomplete": "•",
+            "completed": "X",
+            "in_progress": "/"
+        }
+
+        # Event Status → Symbol Mapping
+        event_symbols = {
+            "scheduled": "O",
+            "completed": "●"
+        }
+
+        if item_type == "task":
+            symbol = task_symbols.get(new_status, None)
+        else:  # event
+            symbol = event_symbols.get(new_status, None)
+
+        if symbol is None:
+            return {"status_code": 400, "detail": "Invalid new_status for this item type"}
+
+        # Build dynamic paths
+        status_path = f"pages.$[page].extracted_items.{item_index}.status"
+        symbol_path = f"pages.$[page].extracted_items.{item_index}.symbol"
+
+        update_payload = {
+            status_path: new_status,
+            symbol_path: symbol
+        }
+
+        # Optional: update completed timestamp
+        if new_status == "completed":
+            completed_path = f"pages.$[page].extracted_items.{item_index}.completed_at"
+            update_payload[completed_path] = datetime.utcnow()
+
+        # Mongo update
+        result = mongo_collection.update_one(
+            {"notebook_id": notebook_id},
+            {"$set": update_payload},
+            array_filters=[{"page.page_index": page_index}]
+        )
+
+        if result.matched_count == 0:
+            return {"status_code": 404, "detail": "Notebook or page not matched"}
+
+        if result.modified_count == 0:
+            return {"message": "No changes applied (maybe already same status)"}
+
+        return {
+            "message": "Status updated successfully",
+            "updated_status": new_status,
+            "updated_symbol": symbol
+        }
+    else:
+        page_index = body.get("page_index")     # e.g. 1
+        new_item = body.get("new_item")         # complete item JSON
+
+        if page_index is None or new_item is None:
+            return {"status_code": 400, "detail": "Missing required fields: page_index, new_item"}
+
+        # Fetch notebook
+        doc = mongo_collection.find_one({"notebook_id": notebook_id})
+        if not doc:
+            return {"status_code": 404, "detail": "Notebook not found"}
+
+        pages = doc.get("pages", [])
+        target_page = next((p for p in pages if p.get("page_index") == page_index), None)
+
+        if not target_page:
+            return {"status_code": 404, "detail": "Page not found"}
+
+        # Apply BuJo symbol rules to the new item
+        apply_bujo_symbols(new_item)
+
+        # Mongo update - push new item to extracted_items array
+        result = mongo_collection.update_one(
+            {"notebook_id": notebook_id},
+            {"$push": {f"pages.$[page].extracted_items": new_item}},
+            array_filters=[{"page.page_index": page_index}]
+        )
+
+        if result.matched_count == 0:
+            return {"status_code": 404, "detail": "Notebook or page not matched"}
+
+        if result.modified_count == 0:
+            return {"message": "No changes applied (maybe item already exists)"}
+
+        return {
+            "message": "New item added successfully",
+            "added_item": new_item
+        }
 
 # Register functions dynamically
 tool_functions = {tool["function"]["name"]: globals()[tool["function"]["name"]] for tool in tools}
@@ -981,7 +1212,8 @@ def get_all_notebooks():
         return {"notebooks": notebooks}
     except PyMongoError as e:
         return {"error": f"mongo_query_failed: {str(e)}"}
-    
+
+
 
 @app.post("/update-status/{notebook_id}")
 async def update_status_by_notebook(notebook_id: str, request: Request):
