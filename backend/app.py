@@ -225,6 +225,19 @@ Your job:
 - if user ask any notebook content or tasks without mentioning the notebook name and it so you need to call "search_notes" tool.
 - From the search_notes tool result, From the partial data asked give a complete about the task and notebook name and id and habits. Once asked detail show all.
 - From listout notebook tool you get all notebooks data but you only list out the basc details and habits. if user ask in details about the note show it.
+- If user asks emotions of them call the get_all_emotions tool and from the result show the emotions in a better markdown visualisation.
+- Dont miss to show the emotions emoji's according to the emotions.
+
+- For modifying the notebook there is two types one is status update and another is new item addition.
+- For status update just from the user query analyse it and provide page_index, item_index, and new_status in the data parameter .
+- item_index is 0 based index. it starts from 0 to N. first item index is 0.
+- new_status can be "completed", "incomplete",  or "in_progress" for tasks and "scheduled" or "completed" for events.
+- For new task/event/note addition just provide a page index to data parameter where new item needs to be added.
+- For the above notebook id is mandatory.
+- When you aware of the notebook context you can directly call the modify_notebook tool with required parameters.
+- If not call search_notes tool to get the relevant context and find the exact notebook id. Then call the identify_notebook tool to get the complete notebook data.
+- Once you have the notebook data you can call the modify_notebook tool with required parameters.
+- Sometimes user may ask to in the "himalaya and world" in notes in that add this task or event or note or status update in the notebook "himalaya and world" just search the notebook from search_notes tool and get the notebook id and call identify_notebook tool to get the complete notebook data. Then call modify_notebook tool with required parameters.
 ------------------------------------------------------------
 CRITICAL SYMBOL RULES (DO NOT CONFUSE)
 ------------------------------------------------------------
@@ -259,7 +272,11 @@ The symbol determines the item type and status.
    - Type: note
    - Status: null
 
-7. Unknown symbol → keep original, mark type: "custom:<symbol>"
+7. DASH or TILDE for SubTasks →  -  or ~
+    - Type: subtask (of last task/event above)
+    - Status: inherit from parent task/event
+
+8. Unknown symbol → keep original, mark type: "custom:<symbol>"
 
 ------------------------------------------------------------
 GENERAL EXTRACTION RULES
@@ -301,6 +318,8 @@ Events:
 
 Notes/emotions: status = null
 
+SUBTASKS inherit status from parent task/event.
+
 ------------------------------------------------------------
 EMOTION ANALYSIS (MANDATORY)
 ------------------------------------------------------------
@@ -310,13 +329,9 @@ For each extracted item, include `"emotion"` evaluated as:
 - "neutral"
 - "sad"
 
-CRITICAL: Analyze the sentiment dynamically from the text context and visual cues.
-- "happy": Positive events, achievements, excitement, happy doodles, or exclamation marks.
-- "stressed": Overwhelming tasks, urgent deadlines ("ASAP", "Urgent"), negative tone, or aggressive scribbles.
-- "sad": Disappointments, bad news, or sad doodles.
-- "neutral": Routine tasks, facts, or calm notes without strong sentiment.
-
-DO NOT apply static rules like "work is always stressed". Evaluate the specific Context of the item.
+Work-related → usually "stressed"
+Positive/personal → "happy"
+Otherwise → "neutral"
 
 ------------------------------------------------------------
 HABIT TRACKER DETECTION
@@ -347,7 +362,9 @@ BEHAVIOR FOR IMAGE UPLOADS
 2. If YES:
    - Extract everything into notebook JSON.
    - IMMEDIATELY call the `notebook` tool with JSON.
-   - After tool call → say: “Your notes have been created successfully.”
+   - After tool call → say: “Your notes have been created successfully.” if the file is created successfully.
+   - And mentioned the notebook name.
+   - according to the return response from the tool give a proper message to the user.
 
 ------------------------------------------------------------
 BEHAVIOR FOR TEXT UPLOADS
@@ -516,7 +533,20 @@ tools = [
                 "limit": {
                     "type": "number",
                     "description": "How many to list out",
-                }
+                },
+                "start_date": {
+                    "type":"string",
+                    "description":"Here mention date according to user query"
+                },
+                "end_date": {
+                    "type":"string",
+                    "description":"Here mention date according to user query"
+                },
+                "task_status": {
+                    "type":"string",
+                    "description":"Here it may be scheduled, completed, incomplete etc.."
+                },
+
             },
             "required": [],
             "additionalProperties": False,
@@ -545,7 +575,99 @@ tools = [
                 "additionalProperties": False,
             },
         }
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_all_emotions",
+            "description": '''It is 'get_all_emotions' tool to get all the emotions from the notebook. It is also a analysis tool for the user to know about their emotions in the notebook.''',
+            "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "number",
+                    "description": "How many to list out",
+                },
+                
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "modify_notebook",
+            "description": '''It is 'modify_notebook' tool to modify the notebook content. It allows updating or adding new entries in the notebook.
+            For status update operation:
+                    - From the notebook analyze it and Provide page_index, item_index, and new_status in the data parameter .
+                    - new_status can be "completed", "incomplete",  or "in_progress" for tasks and "scheduled" or "completed" for events. 
+                    - in data key pass  {"page_index": 1, "item_index": 2, "new_status": "completed"}
+
+            For new task/event/note addition operation:
+                - From the notebook analyze it and provide a page index to data parameter where new item needs to be added.
+                - In data key pass {"page_index": 1, "new_item": {<complete item JSON as per schema>}}   
+                Complete sample item:
+                {
+                    "type": "task",
+                    "status": "incomplete",
+                    "emotion": "neutral",
+                    "time": "15:30",
+                    "content": "New task content here",
+                    "metadata": {
+                        "confidence": 95,
+                        "notes": "Added via modify_notebook tool",
+                        "associated_date": "2024-08-15",
+                        "page_index": 1,
+                        "is_subtask": false,
+                        "time_block_start": null,
+                        "time_block_end": null
+                    }
+                }     
+            ''',
+            "parameters": {
+            "type": "object",
+            "properties": {
+                "notebook_id": {
+                    "type": "string",
+                    "description": "The unique identifier of the notebook to modify.",
+                },
+                "data": {
+                    "type": "string",
+                    "description": "The data containing updates to apply to the notebook.",
+                },
+                "status_update": {
+                    "type": "boolean",
+                    "description": "Flag indicating if this is a status update operation.",
+                    "default": False
+                }
+                
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "identify_notebook",
+            "description": '''Fetch notebook by ID from MongoDB.''',
+            "parameters": {
+            "type": "object",
+            "properties": {
+                "notebook_id": {
+                    "type": "string",
+                    "description": "The unique identifier of the notebook to fetch.",
+                }
+                
+            },
+            "required": ["notebook_id"],
+            "additionalProperties": False,
+        },
+        }
+    }  
 ]
 
 def ai_validator(text_summary, result):
@@ -663,12 +785,13 @@ def notebook(notebook_data: str):
     result=search_notes(text_summary, top_n=5)
     print("Search results from vector DB:")
     print(result)
-    # Method 1: direct indexing
-    score = result[0][3]
-    print(score)
+    
     if len(result)>0:
+        # Method 1: direct indexing
+        score = result[0][3]
+        print(score)
         if score>0.9:
-            return {"ok":True, "message": "The notebook is already exist you can update the data"}
+            return {"message": "The notebook is already exists according to that convey message to user."}
         else:    
             validated_result=ai_validator(text_summary,result)
             print("Validation result from AI validator:")
@@ -699,14 +822,221 @@ def notebook(notebook_data: str):
         return {"error": f"mongo_insert_failed: {str(e)}", "notebook_id": notebook_id}
         
 
-def listout_notebooks(limit=10):
+def listout_notebooks(limit=10, start_date=None, end_date=None, task_status=None):
     res = get_all_notebooks()
-    return {"notebooks": encode(res["notebooks"]), "message":"List out the Notebooks with name and if user asks particular notebook then giev the notes in it with page detail status all etc.."}
+    notebooks = res.get("notebooks", [])
+    filtered_notebooks = []
+
+    # Convert start_date and end_date strings to datetime.date objects if provided
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+
+    for nb in notebooks:
+        filtered_pages = []
+        for page in nb.get("pages", []):
+            filtered_items = []
+            for item in page.get("extracted_items", []):
+                # Filter by type/status if asked
+                if task_status and item.get("status") != task_status:
+                    continue
+
+                # Filter by date range if time metadata exists and is in range
+                associated_date_str = item.get("metadata", {}).get("associated_date")
+                if associated_date_str:
+                    try:
+                        associated_date = datetime.strptime(associated_date_str, "%Y-%m-%d").date()
+                        if start_dt and associated_date < start_dt:
+                            continue
+                        if end_dt and associated_date > end_dt:
+                            continue
+                    except:
+                        pass  # ignore parse errors, keep item
+
+                filtered_items.append(item)
+
+            # Include page if it has filtered items
+            if filtered_items:
+                page_copy = page.copy()
+                page_copy["extracted_items"] = filtered_items
+                filtered_pages.append(page_copy)
+
+        # Include notebook if it has pages with filtered items
+        if filtered_pages:
+            nb_copy = nb.copy()
+            nb_copy["pages"] = filtered_pages
+            filtered_notebooks.append(nb_copy)
+
+        if len(filtered_notebooks) >= limit:
+            break
     
+    return {
+        "notebooks": encode(filtered_notebooks),
+        "message": f"Listed notebooks filtered by date and status. Limit: {limit}"
+    }
     
+# emotion analysis tool
+def get_all_emotions(limit=5):
+    """
+    Get emotion summary across all notebooks.
+    
+    Returns aggregated emotion data, percentages, and per-notebook summaries.
+    """
+    result = get_all_emotions_summary()
+    
+    if "error" in result:
+        return {"status_code": 500, "detail": result["error"]}
+    
+    return { "data": encode(result), "message": "Emotion summary retrieved successfully. From that build a better markdown visualisation for emotion tracking. Overall emotions and each notebook by notebook mention the emotions of the user with emoji's" }
 
+def identify_notebook(notebook_id: str):
+    """
+    Fetch notebook by ID from MongoDB.
+    """
+    doc = mongo_collection.find_one({"notebook_id": notebook_id})
+    if not doc:
+        return None
+    return encode(doc)
 
+# notebook update tool
+def modify_notebook(notebook_id: str, data, status_update: bool = False):
+    """
+    Update the status of an extracted item inside a specific page.
+    Automatically adjusts symbol based on BuJo rules:
+        incomplete  → •
+        completed   → X
+        in_progress → /
+        scheduled   → O
+    """
+    body = json.loads(data)
+    print(body)
+    if status_update:
+        page_index = body.get("page_index")     # e.g. 1
+        item_index = body.get("item_index")   # e.g. 0..N
+        new_status = body.get("new_status")     # "completed" | "incomplete" | "scheduled" | "in_progress"
 
+        if page_index is None or item_index is None or new_status is None:
+            return {"status_code": 400, "detail": "Missing required fields: page_index, item_index, new_status"}
+
+        # Fetch notebook
+        doc = mongo_collection.find_one({"notebook_id": notebook_id})
+        if not doc:
+            return {"status_code": 404, "detail": "Notebook not found"}
+
+        pages = doc.get("pages", [])
+        target_page = next((p for p in pages if p.get("page_index") == page_index), None)
+
+        if not target_page:
+            return {"status_code": 404, "detail": "Page not found"}
+
+        extracted_items = target_page.get("extracted_items", [])
+
+        if not (0 <= item_index < len(extracted_items)):
+            return {"status_code": 400, "detail": "Invalid item index"}
+
+        item = extracted_items[item_index]
+        item_type = item.get("type")
+
+        # Only tasks/events can change status
+        if item_type not in ["task", "event"]:
+            return {
+                "status_code": 400,
+                "detail": f"Cannot update status of type '{item_type}'. Only tasks/events allowed."
+            }
+
+        # ------------------------------------------
+        # Apply BuJo Symbol Rules
+        # ------------------------------------------
+        # Task Status → Symbol Mapping
+        task_symbols = {
+            "incomplete": "•",
+            "completed": "X",
+            "in_progress": "/"
+        }
+
+        # Event Status → Symbol Mapping
+        event_symbols = {
+            "scheduled": "O",
+            "completed": "●"
+        }
+
+        if item_type == "task":
+            symbol = task_symbols.get(new_status, None)
+        else:  # event
+            symbol = event_symbols.get(new_status, None)
+
+        if symbol is None:
+            return {"status_code": 400, "detail": "Invalid new_status for this item type"}
+
+        # Build dynamic paths
+        status_path = f"pages.$[page].extracted_items.{item_index}.status"
+        symbol_path = f"pages.$[page].extracted_items.{item_index}.symbol"
+
+        update_payload = {
+            status_path: new_status,
+            symbol_path: symbol
+        }
+
+        # Optional: update completed timestamp
+        if new_status == "completed":
+            completed_path = f"pages.$[page].extracted_items.{item_index}.completed_at"
+            update_payload[completed_path] = datetime.utcnow()
+
+        # Mongo update
+        result = mongo_collection.update_one(
+            {"notebook_id": notebook_id},
+            {"$set": update_payload},
+            array_filters=[{"page.page_index": page_index}]
+        )
+
+        if result.matched_count == 0:
+            return {"status_code": 404, "detail": "Notebook or page not matched"}
+
+        if result.modified_count == 0:
+            return {"message": "No changes applied (maybe already same status)"}
+
+        return {
+            "message": "Status updated successfully",
+            "updated_status": new_status,
+            "updated_symbol": symbol
+        }
+    else:
+        page_index = body.get("page_index")     # e.g. 1
+        new_item = body.get("new_item")         # complete item JSON
+
+        if page_index is None or new_item is None:
+            return {"status_code": 400, "detail": "Missing required fields: page_index, new_item"}
+
+        # Fetch notebook
+        doc = mongo_collection.find_one({"notebook_id": notebook_id})
+        if not doc:
+            return {"status_code": 404, "detail": "Notebook not found"}
+
+        pages = doc.get("pages", [])
+        target_page = next((p for p in pages if p.get("page_index") == page_index), None)
+
+        if not target_page:
+            return {"status_code": 404, "detail": "Page not found"}
+
+        # Apply BuJo symbol rules to the new item
+        apply_bujo_symbols(new_item)
+
+        # Mongo update - push new item to extracted_items array
+        result = mongo_collection.update_one(
+            {"notebook_id": notebook_id},
+            {"$push": {f"pages.$[page].extracted_items": new_item}},
+            array_filters=[{"page.page_index": page_index}]
+        )
+
+        if result.matched_count == 0:
+            return {"status_code": 404, "detail": "Notebook or page not matched"}
+
+        if result.modified_count == 0:
+            return {"message": "No changes applied (maybe item already exists)"}
+
+        return {
+            "message": "New item added successfully",
+            "added_item": new_item
+        }
 
 # Register functions dynamically
 tool_functions = {tool["function"]["name"]: globals()[tool["function"]["name"]] for tool in tools}
@@ -800,7 +1130,7 @@ async def chat_ws(websocket: WebSocket):
                 "role": "developer",
                 "content": (
                     instructions
-                    + " Today current date is " + str(datetime.now())
+                    + " Today current date is " + str(datetime.utcnow())
                     + " Current user id : " + str(userid)
                 )
             })
@@ -852,17 +1182,19 @@ async def chat_ws(websocket: WebSocket):
                     result = execute_tool(tool_name, arguments)
                     print(result)
 
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(result),
+                    })
+
                     await websocket.send_json({
                         "type": "tool_result",
                         "userid": userid,
                         "status": f"Got result for user '{message}'",
                     })
 
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps(result),
-                    })
+                    
 
     except WebSocketDisconnect:
         return
@@ -880,7 +1212,8 @@ def get_all_notebooks():
         return {"notebooks": notebooks}
     except PyMongoError as e:
         return {"error": f"mongo_query_failed: {str(e)}"}
-    
+
+
 
 @app.post("/update-status/{notebook_id}")
 async def update_status_by_notebook(notebook_id: str, request: Request):
@@ -985,52 +1318,85 @@ async def update_status_by_notebook(notebook_id: str, request: Request):
         "updated_symbol": symbol
     }
 
-@app.delete("/notebook/{notebook_id}/page/{page_index}/item/{item_index}")
-async def delete_item(notebook_id: str, page_index: int, item_index: int):
+def get_all_emotions_summary() -> dict:
     """
-    Delete a specific item (task/event/note) from a notebook page.
+    Get emotion summary across all notebooks in MongoDB.
+    
+    Returns:
+        Dictionary with aggregated emotion data across all notebooks
     """
+    if mongo_collection is None:
+        return {"error": "MongoDB not configured."}
     
-    # Fetch notebook
-    doc = mongo_collection.find_one({"notebook_id": notebook_id})
-    if not doc:
-        return {"status_code": 404, "detail": "Notebook not found"}
-
-    pages = doc.get("pages", [])
-    target_page = next((p for p in pages if p.get("page_index") == page_index), None)
-
-    if not target_page:
-        return {"status_code": 404, "detail": "Page not found"}
-
-    extracted_items = target_page.get("extracted_items", [])
-
-    if not (0 <= item_index < len(extracted_items)):
-        return {"status_code": 400, "detail": "Invalid item index"}
-
-    # Remove item using pop
-    removed_item = extracted_items.pop(item_index)
-
-    # Save update to MongoDB
-    # Since we modified the dictionary object 'doc' directly (nested),
-    # we can replace the entire 'pages' array or just the specific page.
-    # For safety/simplicity in this context, we update the specific page items.
+    try:
+        notebooks = list(mongo_collection.find().limit(100))
+        
+        # Initialize aggregated counters
+        total_emotions = {
+            "happy": 0,
+            "stressed": 0,
+            "neutral": 0,
+            "sad": 0
+        }
+        total_items = 0
+        notebook_summaries = []
+        
+        for doc in notebooks:
+            notebook_id = doc.get("notebook_id", "unknown")
+            notebook_name = doc.get("notebook_name", "Unnamed")
+            
+            notebook_emotions = {"happy": 0, "stressed": 0, "neutral": 0, "sad": 0}
+            notebook_item_count = 0
+            
+            pages = doc.get("pages", [])
+            for page in pages:
+                extracted_items = page.get("extracted_items", [])
+                for item in extracted_items:
+                    emotion = item.get("emotion", "neutral")
+                    emotion = emotion.lower() if emotion else "neutral"
+                    if emotion not in total_emotions:
+                        emotion = "neutral"
+                    
+                    total_emotions[emotion] += 1
+                    notebook_emotions[emotion] += 1
+                    total_items += 1
+                    notebook_item_count += 1
+            
+            # Determine dominant emotion for this notebook
+            dominant = max(notebook_emotions.keys(), key=lambda e: notebook_emotions[e]) if notebook_item_count > 0 else None
+            
+            notebook_summaries.append({
+                "notebook_id": notebook_id,
+                "notebook_name": notebook_name,
+                "item_count": notebook_item_count,
+                "dominant_emotion": dominant,
+                "emotions": notebook_emotions
+            })
+        
+        # Calculate percentages
+        percentages = {}
+        for emotion_key in total_emotions:
+            count = total_emotions[emotion_key]
+            percentages[emotion_key] = round((count / total_items * 100), 2) if total_items > 0 else 0
+        
+        # Overall dominant emotion
+        overall_dominant = max(total_emotions.keys(), key=lambda e: total_emotions[e]) if total_items > 0 else None
+        
+        return {
+            "ok": True,
+            "total_notebooks": len(notebooks),
+            "total_items": total_items,
+            "overall_dominant_emotion": overall_dominant,
+            "total_emotions": total_emotions,
+            "percentages": percentages,
+            "notebooks": notebook_summaries
+        }
     
-    # Actually, we have reference to 'target_page', which is inside 'pages'.
-    # We can just update the whole 'pages' field.
-    
-    result = mongo_collection.update_one(
-        {"notebook_id": notebook_id},
-        {"$set": {"pages": pages}}
-    )
+    except PyMongoError as e:
+        return {"error": f"MongoDB query failed: {str(e)}"}
+    except Exception as e:
+        return {"error": f"Unexpected error: {str(e)}"}
 
-    if result.matched_count == 0:
-        return {"status_code": 404, "detail": "Update failed (notebook deleted?)"}
 
-    return {
-        "message": "Item deleted successfully",
-        "deleted_item": removed_item
-    }
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
+
